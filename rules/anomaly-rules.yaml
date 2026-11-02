@@ -1,0 +1,51 @@
+# Oversight anomaly rules. Evaluated by trustline-oversight on each new ledger entry (stream)
+# and hourly (windowed). Alerts carry rule, severity, officer, subject key and entry sequence
+# numbers — never record content. Thresholds are starting points for the pilot; tune with the
+# Data Protection Commissioner and RSLPF Professional Standards.
+version: 1.0.0
+rules:
+  - code: repeat_subject
+    severity: medium
+    description: Same officer checks the same person repeatedly with no ticket, incident or case to explain it
+    match: { request_kinds: [roadside_check], same: [actor_id, subject_key] }
+    threshold: { count: 3, window: 7d }
+    unless_linked_to: [ticket, incident_ref, case_ref]
+  - code: high_volume
+    severity: high
+    description: Officer runs an unusual number of checks in an hour
+    match: { request_kinds: [roadside_check, investigation_query, crash_query], same: [actor_id] }
+    threshold: { count: 60, window: 1h }
+  - code: denied_spike
+    severity: medium
+    description: Officer receives repeated policy denials (probing for data they may not see)
+    match: { decisions: [deny], same: [actor_id] }
+    threshold: { count: 5, window: 1h }
+  - code: self_lookup
+    severity: medium
+    description: Officer looks up their own record through police tools
+    match: { subject_key_equals: actor_subject_key }
+    threshold: { count: 1 }
+  - code: colleague_lookup
+    severity: low
+    description: Officer looks up another officer outside an investigation
+    match: { subject_key_in: officer_subject_keys, purposes_not: [INV] }
+    threshold: { count: 1 }
+  - code: watchlist_subject
+    severity: info
+    description: Any lookup of a person on the oversight-managed protected list (e.g. protected witnesses, public figures)
+    match: { subject_key_in: protected_list }
+    threshold: { count: 1 }
+  - code: deferral_overuse
+    severity: medium
+    description: A unit requests an unusual number of disclosure deferrals
+    match: { request_kinds: [deferral_request], same: [actor_unit] }
+    threshold: { count: 10, window: 30d }
+  - code: late_offline_sync
+    severity: low
+    description: Offline checks synced long after they were made
+    match: { offline: true, sync_delay_over: 24h }
+    threshold: { count: 1 }
+  - code: after_hours
+    severity: low
+    description: Checks outside the officer's rostered shift
+    enabled: false   # needs the RSLPF duty roster (pilot)

@@ -1,0 +1,600 @@
+<title>TRUSTLINE Pitch Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: two-pane console — the device a person would hold on the left, narration and the live
+   access ledger on the right; an eight-step rail across the top. Stacks to one column on phones. */
+:root {
+  --bg: #eef2f4;
+  --surface: #ffffff;
+  --sunken: #e4eaee;
+  --ink: #13202a;
+  --muted: #566774;
+  --line: #d3dce2;
+  --accent: #1d6aab;          /* cerulean, from the national flag */
+  --accent-soft: #dcebf7;
+  --gold: #a87c00;            /* unconfirmed / pending */
+  --gold-soft: #fbf1d0;
+  --good: #1d7548;
+  --good-soft: #def2e6;
+  --crit: #b3261e;
+  --crit-soft: #fbe3e1;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d141a; --surface: #15202a; --sunken: #1b2833; --ink: #e5edf2; --muted: #98aab7;
+    --line: #2a3a46; --accent: #62aee8; --accent-soft: #16324a; --gold: #f0c64a; --gold-soft: #3a3014;
+    --good: #52c793; --good-soft: #13321f; --crit: #f27a6d; --crit-soft: #3d1a17; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d141a; --surface: #15202a; --sunken: #1b2833; --ink: #e5edf2; --muted: #98aab7;
+  --line: #2a3a46; --accent: #62aee8; --accent-soft: #16324a; --gold: #f0c64a; --gold-soft: #3a3014;
+  --good: #52c793; --good-soft: #13321f; --crit: #f27a6d; --crit-soft: #3d1a17; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 32px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--mono); font-size: 0.86em; font-variant-numeric: tabular-nums; }
+
+/* Header and banners */
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.brand { font-family: var(--display); font-weight: 700; font-size: 34px; letter-spacing: 0.08em; line-height: 1; }
+.brand small { display: block; font-family: var(--body); font-weight: 500; font-size: 13px; letter-spacing: 0; color: var(--muted); margin-top: 6px; }
+.banners { display: flex; flex-wrap: wrap; gap: 8px; }
+.banner { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 5px 10px; border-radius: 999px; border: 1px solid; }
+.banner.syn { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.banner.legal { color: var(--gold); border-color: var(--gold); background: var(--gold-soft); }
+
+/* Step rail */
+.rail { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.rail button {
+  text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  border-radius: 8px; padding: 8px 10px; min-width: 0;
+}
+.rail button b { display: block; font-family: var(--display); font-size: 15px; letter-spacing: 0.06em; color: var(--ink); }
+.rail button span { display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail button[aria-current="step"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.rail button.done b { color: var(--good); }
+
+/* Main grid */
+.main { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.device { padding: 0; overflow: hidden; }
+.device-bar { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 10px 14px; background: var(--sunken); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.device-bar strong { color: var(--ink); font-weight: 600; }
+.device-body { padding: 14px; display: grid; gap: 12px; min-height: 420px; align-content: start; }
+.role-title { font-family: var(--display); font-size: 22px; letter-spacing: 0.04em; font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--sunken); color: var(--ink); }
+.chip.reason { background: var(--accent-soft); color: var(--accent); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 9px 14px; font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.danger { background: transparent; color: var(--crit); border-color: var(--crit); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Status card */
+.card { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.card-head { display: flex; gap: 12px; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); }
+.avatar { width: 46px; height: 46px; border-radius: 8px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 18px; color: #fff; flex: none; }
+.who { min-width: 0; }
+.who b { display: block; }
+.who span { color: var(--muted); font-size: 12px; }
+.syn { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: 2px; }
+.rows { display: grid; }
+.row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); align-items: center; }
+.row:last-child { border-bottom: 0; }
+.row .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.st { display: inline-block; font-family: var(--display); font-weight: 700; letter-spacing: 0.06em; font-size: 15px; padding: 1px 8px; border-radius: 5px; }
+.st.ok { color: var(--good); background: var(--good-soft); }
+.st.bad { color: var(--crit); background: var(--crit-soft); }
+.st.pend { color: var(--gold); background: var(--gold-soft); }
+.st.unk { color: var(--muted); background: var(--sunken); }
+.sources { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; background: var(--sunken); font-size: 11px; color: var(--muted); }
+.notice { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--accent-soft); font-size: 13px; border-radius: 0 6px 6px 0; }
+.notice.warn { border-color: var(--gold); background: var(--gold-soft); }
+.notice.crit { border-color: var(--crit); background: var(--crit-soft); }
+.list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.list li { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
+.list li .meta { font-size: 12px; color: var(--muted); }
+
+/* Narration + ledger */
+.side { display: grid; gap: 16px; min-width: 0; }
+.narr { padding: 16px; display: grid; gap: 10px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.narr h2 { font-family: var(--display); font-size: 28px; letter-spacing: 0.02em; font-weight: 600; line-height: 1.1; }
+.say { font-size: 16px; max-width: 65ch; }
+.proves { font-size: 13px; color: var(--muted); }
+.nav { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ledger { padding: 0; }
+.ledger-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.ledger-head h3 { font-family: var(--display); font-size: 20px; letter-spacing: 0.04em; }
+.verify { font-size: 13px; }
+.table-scroll { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
+tr.new td { animation: flash 1.6s ease-out; }
+tr.tampered td { color: var(--crit); }
+@keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+.dec-allow { color: var(--good); font-weight: 600; }
+.dec-deny { color: var(--crit); font-weight: 600; }
+footer { font-size: 12px; color: var(--muted); max-width: 90ch; }
+
+@media (max-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .rail { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .row { grid-template-columns: 96px minmax(0, 1fr); }
+  .brand { font-size: 28px; }
+}
+@media (prefers-reduced-motion: reduce) { tr.new td { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">TRUSTLINE<small>Pitch demo · purpose-bound public-safety data exchange (concept)</small></div>
+    <div class="banners" aria-label="Data status">
+      <span class="banner syn">Synthetic data</span>
+      <span class="banner legal">Legal values pending verification</span>
+    </div>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Demo steps"></nav>
+
+  <div class="main">
+    <section class="panel device" aria-live="polite">
+      <div class="device-bar"><span id="devWho"></span><span id="devCtx"></span></div>
+      <div class="device-body" id="screen"></div>
+    </section>
+
+    <div class="side">
+      <section class="panel narr">
+        <div class="eyebrow" id="stepEyebrow"></div>
+        <h2 id="stepTitle"></h2>
+        <p class="say" id="stepSay"></p>
+        <p class="proves" id="stepProves"></p>
+        <div class="nav">
+          <button class="btn ghost" id="prevBtn" type="button">Back</button>
+          <button class="btn ghost" id="resetBtn" type="button">Reset demo</button>
+          <button class="btn" id="nextBtn" type="button">Next step</button>
+        </div>
+      </section>
+
+      <section class="panel ledger" aria-label="Access ledger">
+        <div class="ledger-head">
+          <h3>Access ledger</h3>
+          <div class="actions">
+            <span class="verify" id="verifyOut">Not verified yet</span>
+            <button class="btn ghost" id="verifyBtn" type="button">Verify chain</button>
+            <button class="btn danger" id="tamperBtn" type="button">Tamper with an entry</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Seq</th><th>Time</th><th>Who</th><th>Reason</th><th>Request</th><th>Decision</th><th>Subject key</th><th>Entry hash</th></tr></thead>
+            <tbody id="ledgerBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Concept prototype by Limah Innovations, Corp. — not an official system of the Government of Saint Lucia or any agency.
+    Every person, identifier and record shown is synthetic. Demerit points come from an unverified reading of Schedule 2;
+    ticket amounts are illustrative. Ledger hashes are real SHA-256 values computed in your browser over the entries shown.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------- Synthetic people ----------
+  const P = {
+    S2: { name: "Darnell Vieux-Fort", nic: "SYN-NIC-000002", dl: "SYN-DL-****17", init: "DV", hue: 205 },
+    S4: { name: "Odile Marquis", nic: "SYN-NIC-000004", dl: "SYN-DL-****04", init: "OM", hue: 160 },
+    S6: { name: "Keisha Morne-Rouge", nic: "SYN-NIC-000006", dl: "SYN-DL-****66", init: "KM", hue: 280 },
+    S8: { name: "Celine Anse-La-Raye", nic: "SYN-NIC-000008", dl: "SYN-DL-****88", init: "CA", hue: 20 },
+    S9: { name: "Jonah Praslin", nic: "SYN-NIC-000009", dl: "SYN-DL-****09", init: "JP", hue: 120 },
+  };
+  const OFF = {
+    "OFF-101": { name: "PC Joel Marchand", unit: "Gros Islet Traffic", role: "traffic_officer", agency: "RSLPF" },
+    "OFF-102": { name: "PC Ryan Lafitte", unit: "Castries Traffic", role: "traffic_officer", agency: "RSLPF" },
+    "DSP-201": { name: "Sgt Nadia Fontaine", unit: "Control Room", role: "dispatcher", agency: "RSLPF" },
+    "LIC-501": { name: "Grace Monplaisir", unit: "Division of Transport", role: "licensing_officer", agency: "TRANSPORT" },
+    "EMS-601": { name: "Leon Choc", unit: "Fire Service EMS", role: "ems_responder", agency: "FIRE-EMS" },
+    "DPC-701": { name: "Ruth Calixte", unit: "Data Protection oversight", role: "oversight_analyst", agency: "OVERSIGHT" },
+    "CIT": { name: "Citizen (NAF sign-in)", unit: "", role: "citizen", agency: "CITIZEN" },
+  };
+
+  // ---------- Ledger with a real SHA-256 chain ----------
+  const enc = new TextEncoder();
+  const hasCrypto = !!(window.crypto && crypto.subtle);
+  const hex = (buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const canonical = (o) => JSON.stringify(Object.keys(o).sort().reduce((a, k) => { a[k] = o[k]; return a; }, {}));
+  async function sha(s) { if (!hasCrypto) return "0".repeat(64); return hex(await crypto.subtle.digest("SHA-256", enc.encode(s))); }
+  const subjectKey = async (nic) => nic ? (await sha("demo-pepper|NIC:" + nic)).slice(0, 12) : "—";
+
+  let ledger = [];
+  let seq = 1835;
+  let clock = Date.parse("2026-11-02T13:05:00Z");
+  let chainOps = Promise.resolve();
+  let tampered = false;
+
+  function addEntry(e) {
+    chainOps = chainOps.then(async () => {
+      seq += 1; clock += 47000;
+      const body = {
+        seq, at: e.at || new Date(clock).toISOString(), actor: e.actor, purpose: e.purpose, kind: e.kind,
+        decision: e.decision, subject: await subjectKey(e.nic), groups: e.groups || [],
+      };
+      const prev = ledger.length ? ledger[ledger.length - 1].hash : "0".repeat(64);
+      const hash = await sha(prev + canonical(body));
+      ledger.push({ body, prev, hash, fresh: true });
+      $("verifyOut").textContent = "New entries since the last check";
+      renderLedger();
+      return seq;
+    });
+    return chainOps;
+  }
+
+  function renderLedger() {
+    const rows = ledger.slice().reverse().map((r) => {
+      const b = r.body;
+      const t = new Date(b.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "America/St_Lucia" });
+      const cls = [r.fresh ? "new" : "", r.tampered ? "tampered" : ""].join(" ").trim();
+      r.fresh = false;
+      return `<tr class="${cls}"><td class="mono">${b.seq}</td><td class="mono">${t}</td><td>${esc(b.actor)}</td>` +
+        `<td class="mono">${esc(b.purpose)}</td><td>${esc(b.kind)}</td>` +
+        `<td class="${b.decision === "allow" ? "dec-allow" : "dec-deny"}">${esc(b.decision)}</td>` +
+        `<td class="mono">${esc(b.subject)}</td><td class="mono">${r.hash.slice(0, 12)}…</td></tr>`;
+    }).join("");
+    $("ledgerBody").innerHTML = rows;
+  }
+
+  async function verify() {
+    await chainOps;
+    let prev = "0".repeat(64);
+    for (const r of ledger) {
+      const h = await sha(prev + canonical(r.body));
+      if (h !== r.hash || r.prev !== prev) {
+        $("verifyOut").innerHTML = `<span class="st bad">BROKEN</span> first bad entry: <span class="mono">${r.body.seq}</span>`;
+        return false;
+      }
+      prev = r.hash;
+    }
+    $("verifyOut").innerHTML = `<span class="st ok">VERIFIED</span> <span class="mono">${ledger.length}</span> entries`;
+    return true;
+  }
+
+  async function tamper() {
+    await chainOps;
+    if (tampered) { // restore
+      const r = ledger.find((x) => x.tampered);
+      if (r) { r.body.purpose = r.origPurpose; r.tampered = false; }
+      tampered = false;
+      $("tamperBtn").textContent = "Tamper with an entry";
+      renderLedger(); verify();
+      return;
+    }
+    const target = ledger.find((x) => x.body.actor.startsWith("OFF-102")) || ledger[1];
+    target.origPurpose = target.body.purpose;
+    target.body.purpose = "CP";
+    target.tampered = true; tampered = true;
+    $("tamperBtn").textContent = "Undo tampering";
+    renderLedger(); verify();
+  }
+
+  // ---------- Screens ----------
+  const avatar = (p) => `<div class="avatar" style="background:hsl(${p.hue} 45% 42%)" aria-hidden="true">${p.init}</div>`;
+  const st = (cls, text) => `<span class="st ${cls}">${text}</span>`;
+  const row = (k, v) => `<div class="row"><div class="k">${k}</div><div>${v}</div></div>`;
+  const sources = (list) => `<div class="sources">${list.map(([a, s]) => `<span>${a}: <b>${s}</b></span>`).join(" · ")}</div>`;
+
+  function statusCard(p, f) {
+    return `<div class="card">
+      <div class="card-head">${avatar(p)}<div class="who"><b>${esc(p.name)}<span class="syn">SYN</span></b>
+        <span class="mono">${p.dl}</span></div></div>
+      <div class="rows">
+        ${row("Licence", f.licence)}
+        ${row("Points", f.points)}
+        ${row("Vehicle", f.vehicle)}
+        ${row("Insurance", f.insurance)}
+        ${row("Inspection", f.inspection)}
+        ${row("Unpaid", f.unpaid)}
+        ${row("Warrant", f.warrant)}
+        ${row("Stolen", f.stolen)}
+        ${row("Court", f.court)}
+      </div>
+      ${sources(f.sources)}
+    </div>`;
+  }
+
+  const state = {};
+  function resetState() {
+    Object.assign(state, {
+      s1: false, s2scan: false, s2confirm: false, s3scan: false, s3ticket: false,
+      s4paid: false, s5confirmed: false, s5rescan: false, s6dispute: false, s7review: false,
+      s8open: false, s8police: false,
+    });
+  }
+
+  const steps = [
+    {
+      short: "Roadside check", eyebrow: "Step 1 of 8 · Officer", title: "The officer sees only what this stop allows",
+      say: "PC Marchand stops a car and scans the driver's card with reason Traffic stop. The status card shows the licence is suspended and two tickets are unpaid. It never shows health data or criminal history. One agency was slow, so its section says Unknown instead of guessing.",
+      proves: "Proves: purpose-bound field groups (R1, AC1), unknown beats stale (AC19), every lookup logged (AC6).",
+      who: "OFF-101", ctx: "TS · Traffic stop",
+      render() {
+        const p = P.S2;
+        return `<div class="role-title">Roadside check</div>
+          <div class="actions"><span class="chip reason">Reason: TS Traffic stop</span><span class="chip">Location: Gros Islet Highway</span></div>
+          <div class="actions"><button class="btn" data-act="s1" type="button">${state.s1 ? "Scan again" : "Scan demo card S2"}</button></div>
+          ${state.s1 ? statusCard(p, {
+            licence: `${st("bad", "SUSPENDED")} <span class="mono">6-month suspension (s.179(10))</span>`,
+            points: st("bad", "14+"), vehicle: `<span class="mono">SYN-PB 4521</span> · Toyota Hilux · Registered`,
+            insurance: st("ok", "VALID"), inspection: `${st("unk", "UNKNOWN")} <span class="mono">source timeout</span>`,
+            unpaid: `${st("pend", "2 tickets")} <span class="mono">EC$400 (illustrative)</span>`,
+            warrant: st("ok", "NONE"), stolen: st("ok", "NONE"), court: "No court date pending",
+            sources: [["Transport", "ok 84 ms"], ["Police", "ok 112 ms"], ["Insurance", "ok 95 ms"], ["Inspection", "timeout"], ["Courts", "ok 70 ms"]],
+          }) + `<div class="notice">Not on this card by design: health records, criminal history, address, family.</div>` : `<div class="notice">Scan the driver's synthetic demo card to run a check.</div>`}`;
+      },
+      async act(a) { if (a === "s1") { state.s1 = true; await addEntry({ actor: "OFF-101", purpose: "TS", kind: "roadside_check", decision: "allow", nic: P.S2.nic }); } },
+    },
+    {
+      short: "Hit confirmation", eyebrow: "Step 2 of 8 · Officer, then dispatch", title: "A stolen-car match is unconfirmed until dispatch checks the source",
+      say: "The officer types a plate. The police record shows a stolen-vehicle report, so the card says Unconfirmed match and gives the dispatch line. Dispatch re-checks the report at source and confirms it. Nobody acts on stale data.",
+      proves: "Proves: hit confirmation, with match and decision as separate ledger entries (R9, AC11).",
+      who: () => state.s2scan && !state.s2confirm ? "DSP-201" : "OFF-101", ctx: () => state.s2scan && !state.s2confirm ? "DSP · Dispatch confirmation" : "TS · Traffic stop",
+      render() {
+        const p = P.S4;
+        if (!state.s2scan) return `<div class="role-title">Roadside check</div>
+          <div class="actions"><span class="chip reason">Reason: TS Traffic stop</span></div>
+          <div class="actions"><button class="btn" data-act="s2scan" type="button">Check plate SYN-PC 0909</button></div>
+          <div class="notice">Manual plate entry works when there is no card to scan.</div>`;
+        const stolen = state.s2confirm ? st("bad", "CONFIRMED") : st("pend", "UNCONFIRMED MATCH");
+        const card = statusCard(p, {
+          licence: st("ok", "VALID"), points: st("ok", "0-4"), vehicle: `<span class="mono">SYN-PC 0909</span> · Nissan Note · Registered`,
+          insurance: st("ok", "VALID"), inspection: st("ok", "PASSED"), unpaid: st("ok", "None"),
+          warrant: st("ok", "NONE"), stolen, court: "No court date pending",
+          sources: [["Transport", "ok"], ["Police", "ok"], ["Insurance", "ok"], ["Inspection", "ok"], ["Courts", "ok"]],
+        });
+        if (!state.s2confirm) return `<div class="role-title">Dispatch queue</div>
+          <ul class="list"><li><b>Stolen vehicle · SYN-PC 0909</b><span class="meta">Raised by OFF-101 · report SYN-RPT-2026-0412 · status unconfirmed</span></li></ul>
+          <div class="actions"><button class="btn" data-act="s2confirm" type="button">Re-check at source and confirm</button></div>
+          <div class="notice warn">The officer's screen shows: Unconfirmed match — call dispatch before acting. Registered owner shown: ${esc(p.name)} (reported it stolen).</div>`;
+        return `<div class="role-title">Roadside check</div>${card}
+          <div class="notice crit">Dispatch confirmed the stolen-vehicle report at source. Proceed under procedure.</div>`;
+      },
+      async act(a) {
+        if (a === "s2scan") { state.s2scan = true; await addEntry({ actor: "OFF-101", purpose: "TS", kind: "roadside_check (hit raised)", decision: "allow", nic: P.S4.nic }); }
+        if (a === "s2confirm") { state.s2confirm = true; await addEntry({ actor: "DSP-201", purpose: "DSP", kind: "hit_decision: confirmed", decision: "allow", nic: P.S4.nic }); }
+      },
+    },
+    {
+      short: "Digital ticket", eyebrow: "Step 3 of 8 · Officer", title: "A digital ticket, with a receipt for the driver",
+      say: "PC Marchand stops Keisha Morne-Rouge for doing more than 20 mph over the limit. Her card is clean. The ticket is issued on the device and sent to the court and the Licensing Authority. She gets a receipt with the stop reference.",
+      proves: "Proves: e-tickets under the Ticketable Offences Regulations (R7). Fixed penalties are illustrative until the schedule is supplied.",
+      who: "OFF-101", ctx: "TS · Traffic stop",
+      render() {
+        const p = P.S6;
+        if (!state.s3scan) return `<div class="role-title">Roadside check</div>
+          <div class="actions"><span class="chip reason">Reason: TS Traffic stop</span></div>
+          <div class="actions"><button class="btn" data-act="s3scan" type="button">Scan demo card S6</button></div>`;
+        const card = statusCard(p, {
+          licence: st("ok", "VALID"), points: st("pend", "5-9"), vehicle: `<span class="mono">SYN-PB 6606</span> · Honda Fit · Registered`,
+          insurance: st("ok", "VALID"), inspection: st("ok", "PASSED"), unpaid: st("ok", "None"), warrant: st("ok", "NONE"),
+          stolen: st("ok", "NONE"), court: "No court date pending",
+          sources: [["Transport", "ok"], ["Police", "ok"], ["Insurance", "ok"], ["Inspection", "ok"], ["Courts", "ok"]],
+        });
+        if (!state.s3ticket) return `<div class="role-title">Roadside check</div>${card}
+          <div class="actions"><button class="btn" data-act="s3ticket" type="button">Issue ticket: SPEED-20</button></div>`;
+        return `<div class="role-title">Ticket issued</div>
+          <div class="card"><div class="rows">
+            ${row("Ticket", `<span class="mono">SYN-T-2026-000301</span>`)}
+            ${row("Offence", "Exceeding the speed limit by 20 mph or more")}
+            ${row("Schedule 2", `<span class="mono">2(e) · 7 points on conviction</span>`)}
+            ${row("Penalty", `<span class="mono">EC$500</span> <span class="chip">illustrative</span>`)}
+            ${row("Pay by", "16 Nov 2026, online or at the Court Traffic Part")}
+          </div></div>
+          <div class="notice">Driver receipt: stop reference <span class="mono">L-${seq}</span>. The same reference appears in her access log.</div>`;
+      },
+      async act(a) {
+        if (a === "s3scan") { state.s3scan = true; await addEntry({ actor: "OFF-101", purpose: "TS", kind: "roadside_check", decision: "allow", nic: P.S6.nic }); }
+        if (a === "s3ticket") { state.s3ticket = true; await addEntry({ actor: "OFF-101", purpose: "TS", kind: "ticket_issue SPEED-20", decision: "allow", nic: P.S6.nic }); }
+      },
+    },
+    {
+      short: "Citizen pays", eyebrow: "Step 4 of 8 · Citizen", title: "Paying is a guilty plea; points are recorded automatically",
+      say: "Keisha signs in with her national digital ID and pays online. Payment counts as conviction, so 7 points from Schedule 2 are recorded. With the 8 points already on her record from this year, she now has 15.",
+      proves: "Proves: ticket to points (R8, AC8). Points come from the versioned rules file, flagged as unverified.",
+      who: "CIT", ctx: "CIT · Own record",
+      render() {
+        const p = P.S6;
+        return `<div class="role-title">My Record</div>
+          <div class="card"><div class="card-head">${avatar(p)}<div class="who"><b>${esc(p.name)}<span class="syn">SYN</span></b><span>Signed in with NAF</span></div></div>
+          <div class="rows">
+            ${row("Licence", st("ok", "VALID"))}
+            ${row("Points", state.s4paid ? `${st("bad", "15")} <span class="mono">8 earlier this year + 7 today</span>` : `${st("pend", "8")} <span class="mono">in force</span>`)}
+            ${row("Ticket", `<span class="mono">SYN-T-2026-000301</span> · ${state.s4paid ? st("ok", "PAID") : st("pend", "UNPAID")}`)}
+          </div></div>
+          ${state.s4paid ? `<div class="notice warn">15 points within one year meets section 179(10). A 6-month suspension has been proposed to the Licensing Authority. Nothing changes until an officer decides.</div>`
+            : `<div class="actions"><button class="btn" data-act="s4pay" type="button">Pay EC$500 (simulated)</button><button class="btn ghost" type="button" disabled>Contest in court</button></div>`}`;
+      },
+      async act(a) { if (a === "s4pay") { state.s4paid = true; await addEntry({ actor: "CIT (S6)", purpose: "CIT", kind: "ticket_payment → points", decision: "allow", nic: P.S6.nic }); } },
+    },
+    {
+      short: "Licensing decides", eyebrow: "Step 5 of 8 · Licensing Authority", title: "The system proposes; a licensing officer decides",
+      say: "Section 179 has waited years for this ledger. The Licensing Authority sees the proposal with its legal basis and the convictions behind it. Grace Monplaisir confirms it, the appeal deadline is set, and back on the road the card now says Suspended.",
+      proves: "Proves: human decision before any licence action (R8, HL5, AC10), enforced by a database trigger.",
+      who: () => state.s5confirmed && state.s5rescan ? "OFF-101" : "LIC-501", ctx: () => state.s5confirmed && state.s5rescan ? "TS · Traffic stop" : "LIC · Licensing administration",
+      render() {
+        const p = P.S6;
+        if (!state.s5confirmed) return `<div class="role-title">Proposed actions</div>
+          <ul class="list"><li><b>${esc(p.name)} <span class="syn">SYN</span> · Suspend 6 months</b>
+            <span class="meta">Basis: s.179(10) — 10 or more points within one year · 15 in force</span>
+            <span class="meta mono">Convictions: 2(b) 6 pts · 4(b) 2 pts · 2(e) 7 pts</span>
+            <span class="meta">Rules file: unverified (pending counsel)</span></li></ul>
+          <div class="actions"><button class="btn" data-act="s5confirm" type="button">Confirm suspension</button><button class="btn ghost" type="button" disabled>Reject with note</button></div>`;
+        if (!state.s5rescan) return `<div class="role-title">Decision recorded</div>
+          <div class="card"><div class="rows">
+            ${row("Action", st("bad", "SUSPENDED 6 MONTHS"))}
+            ${row("Decided by", "LIC-501 Grace Monplaisir")}
+            ${row("Appeal by", "12 Nov 2026 (10 days, to a Magistrate)")}
+          </div></div>
+          <div class="actions"><button class="btn" data-act="s5rescan" type="button">Officer re-scans S6</button></div>`;
+        return `<div class="role-title">Roadside check</div>` + statusCard(p, {
+          licence: `${st("bad", "SUSPENDED")} <span class="mono">confirmed by LIC-501</span>`, points: st("bad", "14+"),
+          vehicle: `<span class="mono">SYN-PB 6606</span> · Honda Fit · Registered`, insurance: st("ok", "VALID"), inspection: st("ok", "PASSED"),
+          unpaid: st("ok", "None"), warrant: st("ok", "NONE"), stolen: st("ok", "NONE"), court: "No court date pending",
+          sources: [["Transport", "ok"], ["Police", "ok"], ["Insurance", "ok"], ["Inspection", "ok"], ["Courts", "ok"]],
+        });
+      },
+      async act(a) {
+        if (a === "s5confirm") { state.s5confirmed = true; await addEntry({ actor: "LIC-501", purpose: "LIC", kind: "licence_decision: confirm", decision: "allow", nic: P.S6.nic }); }
+        if (a === "s5rescan") { state.s5rescan = true; await addEntry({ actor: "OFF-101", purpose: "TS", kind: "roadside_check", decision: "allow", nic: P.S6.nic }); }
+      },
+    },
+    {
+      short: "Who viewed my data", eyebrow: "Step 6 of 8 · Citizen", title: "Every citizen can see who looked them up",
+      say: "Celine signs in and opens Who viewed my data. Every lookup shows the agency, badge, reason and time. Five checks by the same officer in one day, with no stop, ticket or case behind them. She can dispute any entry.",
+      proves: "Proves: the citizen access log (R6, AC7). Entries under an approved investigation deferral stay hidden until it expires, and the log never reveals that a deferral exists.",
+      who: "CIT", ctx: "CIT · Own record",
+      render() {
+        const p = P.S8;
+        const times = ["08:12", "10:47", "13:05", "16:31", "21:54"];
+        const items = times.map((t) => `<li><b>RSLPF · Castries Traffic · badge OFF-102</b><span class="meta">1 Nov 2026, ${t} · TS Traffic stop · roadside check · no ticket issued</span></li>`).join("");
+        return `<div class="role-title">Who viewed my data</div>
+          <div class="actions"><span class="chip">${esc(p.name)} <span class="syn">SYN</span></span><span class="chip">Signed in with NAF</span></div>
+          <ul class="list">${items}</ul>
+          ${state.s6dispute ? `<div class="notice">Dispute sent. It is now in the oversight queue, linked to these ledger entries.</div>`
+            : `<div class="actions"><button class="btn" data-act="s6dispute" type="button">Dispute these lookups</button></div>`}`;
+      },
+      async act(a) { if (a === "s6dispute") { state.s6dispute = true; await addEntry({ actor: "CIT (S8)", purpose: "CIT", kind: "dispute_opened", decision: "allow", nic: P.S8.nic }); } },
+    },
+    {
+      short: "Oversight", eyebrow: "Step 7 of 8 · Oversight", title: "Oversight catches the pattern on its own",
+      say: "The repeat-lookup rule fired before Celine complained. The reviewer sees the officer, the entries and the subject's keyed hash, never the record itself. Use Verify chain to show the ledger is intact, then Tamper with an entry to show an edit is caught at once.",
+      proves: "Proves: anomaly rules and alerts (R10, AC12) and a tamper-evident ledger (R5, AC5). The hashes here are real SHA-256 values.",
+      who: "DPC-701", ctx: "AUD · Oversight audit",
+      render() {
+        return `<div class="role-title">Alerts</div>
+          <ul class="list"><li><b>${st("pend", "MEDIUM")} repeat_subject · OFF-102</b>
+            <span class="meta">5 roadside checks of one person in 24 h with no ticket, incident or case</span>
+            <span class="meta mono">subject key ${ledgerKeyFor(P.S8)} · entries 1836–1840</span>
+            <span class="meta">${state.s6dispute ? "Linked: citizen dispute opened" : "No dispute yet"}</span></li></ul>
+          ${state.s7review ? `<div class="notice">Reviewed: referred to RSLPF Professional Standards. The review is itself a ledger entry.</div>`
+            : `<div class="actions"><button class="btn" data-act="s7review" type="button">Refer to Professional Standards</button></div>`}
+          <div class="notice">Monthly transparency report publishes the ledger's checkpoint fingerprints, so the record cannot be rewritten later without detection.</div>`;
+      },
+      async act(a) { if (a === "s7review") { state.s7review = true; await addEntry({ actor: "DPC-701", purpose: "AUD", kind: "alert_review: referred", decision: "allow", nic: null }); } },
+    },
+    {
+      short: "Crash scene", eyebrow: "Step 8 of 8 · EMS, then police", title: "Health data reaches a paramedic, never the police",
+      say: "At a crash with an active incident number, a paramedic scans Jonah's card. He opted in, so his emergency card appears: blood group, allergy, asthma, emergency contact. A police officer trying the same thing is refused, and the refusal is logged.",
+      proves: "Proves: opt-in emergency card (R15, AC16) and health isolation from every police role (R3, AC3, policy G3).",
+      who: () => state.s8police ? "OFF-101" : "EMS-601", ctx: () => state.s8police ? "TS · Traffic stop" : "EMS · Incident SYN-INC-2026-0007",
+      render() {
+        const p = P.S9;
+        if (!state.s8open) return `<div class="role-title">Emergency card</div>
+          <div class="actions"><span class="chip reason">Incident SYN-INC-2026-0007 · active</span></div>
+          <div class="actions"><button class="btn" data-act="s8open" type="button">Scan demo card S9</button></div>`;
+        const cardHtml = `<div class="card"><div class="card-head">${avatar(p)}<div class="who"><b>${esc(p.name)}<span class="syn">SYN</span></b><span>Opted in · source: Ministry of Health</span></div></div>
+          <div class="rows">${row("Blood group", st("ok", "O+"))}${row("Allergies", "Penicillin")}${row("Conditions", "Asthma")}${row("Contact", `Mara Praslin · <span class="mono">+1 758 555 0142</span>`)}</div></div>`;
+        if (!state.s8police) return `<div class="role-title">Emergency card</div>${cardHtml}
+          <div class="actions"><button class="btn danger" data-act="s8police" type="button">Try the same as a traffic officer</button></div>`;
+        return `<div class="role-title">Request refused</div>
+          <div class="notice crit"><b>403 · Not permitted.</b> Health data is never available to police roles, under any reason (policy G3). This refusal is recorded in the ledger and in Jonah's access log.</div>`;
+      },
+      async act(a) {
+        if (a === "s8open") { state.s8open = true; await addEntry({ actor: "EMS-601", purpose: "EMS", kind: "emergency_card_open", decision: "allow", nic: P.S9.nic }); }
+        if (a === "s8police") { state.s8police = true; await addEntry({ actor: "OFF-101", purpose: "TS", kind: "emergency_card_open", decision: "deny", nic: P.S9.nic }); }
+      },
+    },
+  ];
+
+  let keyCache = {};
+  function ledgerKeyFor(p) { return keyCache[p.nic] || "…"; }
+
+  let current = 0;
+  const done = new Set();
+
+  function renderRail() {
+    $("rail").innerHTML = steps.map((s, i) => `<button type="button" data-step="${i}" ${i === current ? 'aria-current="step"' : ""} class="${done.has(i) ? "done" : ""}"><b>${i + 1}</b><span>${s.short}</span></button>`).join("");
+  }
+
+  function val(x) { return typeof x === "function" ? x() : x; }
+
+  function render() {
+    const s = steps[current];
+    const whoId = val(s.who);
+    const o = OFF[whoId];
+    $("devWho").innerHTML = `<strong>${esc(o.name)}</strong>${whoId === "CIT" ? "" : ` · <span class="mono">${whoId}</span> · ${esc(o.unit)}`}`;
+    $("devCtx").textContent = val(s.ctx);
+    $("screen").innerHTML = s.render();
+    $("stepEyebrow").textContent = s.eyebrow;
+    $("stepTitle").textContent = s.title;
+    $("stepSay").textContent = s.say;
+    $("stepProves").textContent = s.proves;
+    $("prevBtn").disabled = current === 0;
+    $("nextBtn").textContent = current === steps.length - 1 ? "Finish" : "Next step";
+    renderRail();
+  }
+
+  $("screen").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    b.disabled = true;
+    await steps[current].act(b.dataset.act);
+    done.add(current);
+    render();
+  });
+  $("rail").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-step]");
+    if (!b) return;
+    current = Number(b.dataset.step); render();
+  });
+  $("prevBtn").addEventListener("click", () => { if (current > 0) { current -= 1; render(); } });
+  $("nextBtn").addEventListener("click", () => { done.add(current); if (current < steps.length - 1) { current += 1; } render(); });
+  $("verifyBtn").addEventListener("click", verify);
+  $("tamperBtn").addEventListener("click", tamper);
+  $("resetBtn").addEventListener("click", () => boot(true));
+
+  async function boot(isReset) {
+    await chainOps;
+    ledger = []; seq = 1835; clock = Date.parse("2026-11-02T13:05:00Z"); tampered = false;
+    $("tamperBtn").textContent = "Tamper with an entry";
+    $("verifyOut").textContent = "Not verified yet";
+    resetState(); done.clear(); current = 0;
+    for (const p of Object.values(P)) keyCache[p.nic] = await subjectKey(p.nic);
+    // Earlier entries: the misuse pattern oversight will catch in step 7.
+    const misuseTimes = ["12:12", "14:47", "17:05", "20:31"].map((t) => `2026-11-01T${t}:00Z`).concat(["2026-11-02T01:54:00Z"]);
+    for (const at of misuseTimes) await addEntry({ actor: "OFF-102", purpose: "TS", kind: "roadside_check", decision: "allow", nic: P.S8.nic, at });
+    // Open in a working state: step 1's check already run.
+    state.s1 = true;
+    await addEntry({ actor: "OFF-101", purpose: "TS", kind: "roadside_check", decision: "allow", nic: P.S2.nic });
+    render();
+    if (!isReset) await verify();
+  }
+  render();
+  boot(false);
+})();
+</script>

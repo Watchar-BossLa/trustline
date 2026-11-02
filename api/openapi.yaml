@@ -1,0 +1,1348 @@
+openapi: 3.1.0
+info:
+  title: TRUSTLINE API
+  version: 1.0.0
+  summary: Purpose-bound public-safety data exchange — Government of Saint Lucia (demo build)
+  description: |
+    Contract for the TRUSTLINE API (spec-first; the server must conform).
+
+    Rules that apply to every operation:
+    - Personal identifiers (NIC, licence number, plate) travel only in request bodies, never in
+      URLs, so they cannot leak into access logs or proxies.
+    - `x-ledger: true` operations write exactly one ledger entry per request, including denials,
+      rate limits and errors. `x-ledger: per_item` writes one entry per item (offline sync).
+      `x-ledger: false` operations touch no personal data.
+    - Errors are `application/problem+json` (RFC 9457) and never reveal which agency holds what.
+    - Officer calls carry `X-Device-Id`; the device must be enrolled and attested.
+    - All data in this build is synthetic. Every response that carries personal data includes
+      `synthetic: true`.
+  contact:
+    name: Limah Innovations, Corp.
+servers:
+  - url: http://localhost:8080
+    description: Local docker compose (development only)
+security:
+  - bearer: []
+tags:
+  - name: roadside
+  - name: hits
+  - name: investigations
+  - name: tickets
+  - name: court
+  - name: licensing
+  - name: citizen
+  - name: ems
+  - name: deferrals
+  - name: oversight
+  - name: offline
+  - name: system
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      operationId: health
+      security: []
+      x-ledger: false
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  /v1/meta/rules:
+    get:
+      tags: [system]
+      operationId: getRulesMeta
+      security: []
+      x-ledger: false
+      description: Versions and legal-verification status of the rules files; drives the banner (HL11).
+      responses:
+        '200':
+          description: Rules metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RulesMeta' }
+
+  /v1/dev/token:
+    post:
+      tags: [system]
+      operationId: issueDevToken
+      security: []
+      x-ledger: false
+      description: |
+        Issues a short-lived token for a synthetic persona. Exists only when DEV_AUTH=true;
+        the server refuses to start with DEV_AUTH=true and TRUSTLINE_ENV=production.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [persona]
+              properties:
+                persona: { type: string, example: OFF-101 }
+      responses:
+        '200':
+          description: Token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DevToken' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/roadside/checks:
+    post:
+      tags: [roadside]
+      operationId: createRoadsideCheck
+      x-ledger: true
+      x-purposes: [TS, CP]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoadsideCheckRequest' }
+      responses:
+        '200':
+          description: Status card containing only the field groups permitted for the purpose
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusCard' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/hits:
+    get:
+      tags: [hits]
+      operationId: listHits
+      x-ledger: true
+      x-purposes: [DSP]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [unconfirmed, confirmed, cleared], default: unconfirmed }
+      responses:
+        '200':
+          description: Hits for the dispatch queue
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hits]
+                properties:
+                  hits:
+                    type: array
+                    items: { $ref: '#/components/schemas/Hit' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/hits/{hitId}/decision:
+    post:
+      tags: [hits]
+      operationId: decideHit
+      x-ledger: true
+      x-purposes: [DSP]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/HitId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, note]
+              properties:
+                decision: { type: string, enum: [confirmed, cleared] }
+                note: { type: string, minLength: 3, maxLength: 1000 }
+      responses:
+        '200':
+          description: Hit after decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hit' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/hits/{hitId}/events:
+    get:
+      tags: [hits]
+      operationId: hitEvents
+      x-ledger: false
+      description: Server-sent events with the hit's status changes, for the officer who raised it.
+      parameters:
+        - $ref: '#/components/parameters/HitId'
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /v1/investigations/queries:
+    post:
+      tags: [investigations]
+      operationId: createInvestigationQuery
+      x-ledger: true
+      x-purposes: [INV, WAR, CRASH]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvestigationRequest' }
+      responses:
+        '200':
+          description: Permitted datasets only; denied groups are listed by name
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvestigationResult' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/tickets:
+    post:
+      tags: [tickets]
+      operationId: issueTicket
+      x-ledger: true
+      x-purposes: [TS, CP]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketIssueRequest' }
+      responses:
+        '201':
+          description: Ticket issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/tickets/{ticketNo}:
+    get:
+      tags: [tickets]
+      operationId: getTicket
+      x-ledger: true
+      x-purposes: [TS, CP, LIC, CRT, CIT]
+      parameters:
+        - $ref: '#/components/parameters/TicketNo'
+      responses:
+        '200':
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/tickets/{ticketNo}/payments/simulated:
+    post:
+      tags: [tickets, citizen]
+      operationId: paySimulated
+      x-ledger: true
+      x-purposes: [CIT]
+      description: Simulated online payment by the driver (guilty plea). Pilot uses the government payment platform.
+      parameters:
+        - $ref: '#/components/parameters/TicketNo'
+      responses:
+        '200':
+          description: Ticket after payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/court/payments:
+    post:
+      tags: [court]
+      operationId: recordCourtPayment
+      x-ledger: true
+      x-purposes: [CRT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference, amount_ecd, paid_at]
+              properties:
+                ticket_no: { type: string }
+                court_case_ref: { type: string }
+                reference: { type: string }
+                amount_ecd: { type: number, minimum: 0 }
+                paid_at: { type: string, format: date-time }
+      responses:
+        '204': { description: Recorded }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/court/outcomes:
+    post:
+      tags: [court]
+      operationId: recordCourtOutcome
+      x-ledger: true
+      x-purposes: [CRT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CourtOutcome' }
+      responses:
+        '204': { description: Recorded; convictions create demerit records }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/court/fines:
+    post:
+      tags: [court]
+      operationId: recordCourtFine
+      x-ledger: true
+      x-purposes: [CRT]
+      description: Fine imposed on conviction; starts the section 107 30-day clock once proceedings conclude.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [court_case_ref, driver, amount_ecd, proceedings_concluded_at]
+              properties:
+                court_case_ref: { type: string }
+                driver: { $ref: '#/components/schemas/Identifier' }
+                amount_ecd: { type: number, exclusiveMinimum: 0 }
+                proceedings_concluded_at: { type: string, format: date-time }
+      responses:
+        '204': { description: Recorded }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/licensing/proposed-actions:
+    get:
+      tags: [licensing]
+      operationId: listProposedActions
+      x-ledger: true
+      x-purposes: [LIC]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, confirmed, rejected, superseded], default: pending }
+      responses:
+        '200':
+          description: Proposed actions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actions]
+                properties:
+                  actions:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProposedAction' }
+
+  /v1/licensing/proposed-actions/{actionId}/decision:
+    post:
+      tags: [licensing]
+      operationId: decideProposedAction
+      x-ledger: true
+      x-purposes: [LIC]
+      description: The only way a licence action becomes effective (HL5).
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: actionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, note]
+              properties:
+                decision: { type: string, enum: [confirm, reject] }
+                note: { type: string, minLength: 3, maxLength: 2000 }
+                starts_at: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProposedAction' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/licensing/driver-record:
+    post:
+      tags: [licensing]
+      operationId: getLicensingDriverRecord
+      x-ledger: true
+      x-purposes: [LIC]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driver]
+              properties:
+                driver: { $ref: '#/components/schemas/Identifier' }
+      responses:
+        '200':
+          description: Points, tickets and court timeline for licensing administration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DriverRecord' }
+
+  /v1/me/record:
+    get:
+      tags: [citizen]
+      operationId: getMyRecord
+      x-ledger: true
+      x-purposes: [CIT]
+      responses:
+        '200':
+          description: The signed-in citizen's own record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DriverRecord' }
+
+  /v1/me/access-log:
+    get:
+      tags: [citizen]
+      operationId: getMyAccessLog
+      x-ledger: true
+      x-purposes: [CIT]
+      description: |
+        Every access to the citizen's data, newest first. Entries under an active disclosure
+        deferral are omitted and the response never indicates that a deferral exists; released
+        entries show `deferred_until`. The citizen's own views (relation `self`) are excluded
+        unless `include_self=true`.
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - name: include_self
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Access log page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessLogPage' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/me/disputes:
+    post:
+      tags: [citizen]
+      operationId: createDispute
+      x-ledger: true
+      x-purposes: [CIT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                event_seq: { type: integer, minimum: 1 }
+                ticket_no: { type: string }
+                body: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        '201':
+          description: Dispute opened; appears in the oversight queue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dispute' }
+
+  /v1/me/emergency-card-consent:
+    put:
+      tags: [citizen, ems]
+      operationId: setEmergencyCardConsent
+      x-ledger: true
+      x-purposes: [CIT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [opt_in, consent_text_version]
+              properties:
+                opt_in: { type: boolean }
+                consent_text_version: { type: string }
+      responses:
+        '200':
+          description: Consent state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [opted_in]
+                properties:
+                  opted_in: { type: boolean }
+                  since: { type: string, format: date-time }
+
+  /v1/ems/emergency-cards:
+    post:
+      tags: [ems]
+      operationId: openEmergencyCard
+      x-ledger: true
+      x-purposes: [EMS]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [person, incident_ref]
+              properties:
+                person: { $ref: '#/components/schemas/Identifier' }
+                incident_ref: { type: string }
+      responses:
+        '200':
+          description: Emergency card (opted-in persons only)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyCard' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/deferrals:
+    post:
+      tags: [deferrals]
+      operationId: requestDeferral
+      x-ledger: true
+      x-purposes: [INV]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_seq, case_ref, reason, expires_at]
+              properties:
+                event_seq: { type: integer, minimum: 1 }
+                case_ref: { type: string }
+                reason: { type: string, minLength: 10, maxLength: 2000 }
+                expires_at:
+                  type: string
+                  format: date-time
+                  description: Capped at the configured maximum (default 90 days); renewal needs a new approval.
+      responses:
+        '201':
+          description: Deferral pending supervisor approval
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Deferral' }
+
+  /v1/deferrals/{deferralId}/approval:
+    post:
+      tags: [deferrals]
+      operationId: approveDeferral
+      x-ledger: true
+      x-purposes: [INV]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/DeferralId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: string, maxLength: 2000 }
+      responses:
+        '200':
+          description: Deferral after decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Deferral' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/oversight/deferrals:
+    get:
+      tags: [oversight, deferrals]
+      operationId: listDeferrals
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: All deferrals with status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deferrals]
+                properties:
+                  deferrals:
+                    type: array
+                    items: { $ref: '#/components/schemas/Deferral' }
+
+  /v1/oversight/deferrals/{deferralId}/acknowledgement:
+    post:
+      tags: [oversight, deferrals]
+      operationId: acknowledgeDeferral
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/DeferralId'
+      responses:
+        '204': { description: Acknowledged }
+
+  /v1/oversight/alerts:
+    get:
+      tags: [oversight]
+      operationId: listAlerts
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, reviewing, closed_no_issue, referred] }
+      responses:
+        '200':
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [alerts]
+                properties:
+                  alerts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
+
+  /v1/oversight/alerts/{alertId}:
+    patch:
+      tags: [oversight]
+      operationId: reviewAlert
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: alertId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, review_note]
+              properties:
+                status: { type: string, enum: [reviewing, closed_no_issue, referred] }
+                review_note: { type: string, minLength: 3, maxLength: 4000 }
+      responses:
+        '200':
+          description: Alert after review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Alert' }
+
+  /v1/oversight/disputes:
+    get:
+      tags: [oversight]
+      operationId: listDisputes
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Citizen disputes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [disputes]
+                properties:
+                  disputes:
+                    type: array
+                    items: { $ref: '#/components/schemas/Dispute' }
+
+  /v1/oversight/reports/{period}:
+    get:
+      tags: [oversight]
+      operationId: getMonthlyReport
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: period
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9]{4}-[0-9]{2}$', example: 2026-11 }
+      responses:
+        '200':
+          description: Aggregates and checkpoint roots for the month
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MonthlyReport' }
+
+  /v1/oversight/ledger/status:
+    get:
+      tags: [oversight]
+      operationId: getLedgerStatus
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Ledger head, last checkpoint and last verification result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerStatus' }
+
+  /v1/offline/bundle:
+    get:
+      tags: [offline]
+      operationId: getOfflineBundle
+      x-ledger: true
+      x-purposes: [TS, CP]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Signed, encrypted, expiring flag bundle for this device
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfflineBundle' }
+
+  /v1/offline/sync:
+    post:
+      tags: [offline]
+      operationId: syncOfflineChecks
+      x-ledger: per_item
+      x-purposes: [TS, CP]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bundle_id, checks]
+              properties:
+                bundle_id: { type: string, format: uuid }
+                checks:
+                  type: array
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/OfflineCheck' }
+      responses:
+        '200':
+          description: Ledger sequence numbers for each synced check
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ledger_seqs]
+                properties:
+                  ledger_seqs:
+                    type: array
+                    items: { type: integer }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Officer, citizen (NAF) or service token. DEV_AUTH tokens in the demo build only.
+
+  parameters:
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      description: Enrolled device id (officers). Ignored for citizen and service principals.
+      schema: { type: string, format: uuid }
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema: { type: string, maxLength: 64 }
+    HitId:
+      name: hitId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DeferralId:
+      name: deferralId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TicketNo:
+      name: ticketNo
+      in: path
+      required: true
+      schema: { type: string, pattern: '^SYN-T-[0-9]{4}-[0-9]{6}$' }
+
+  responses:
+    Problem:
+      description: Problem details
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: Rate limit exceeded (logged)
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        ledger_seq: { type: integer, description: Ledger entry recording this failure, when ledger-scoped }
+
+    RulesMeta:
+      type: object
+      required: [rules, all_verified, synthetic]
+      properties:
+        synthetic: { type: boolean, const: true }
+        all_verified: { type: boolean }
+        policy_version: { type: string }
+        rules:
+          type: array
+          items:
+            type: object
+            required: [file, version, verified]
+            properties:
+              file: { type: string }
+              version: { type: string }
+              sha256: { type: string }
+              verified: { type: boolean }
+
+    DevToken:
+      type: object
+      required: [access_token, expires_in, persona]
+      properties:
+        access_token: { type: string }
+        expires_in: { type: integer }
+        persona: { type: string }
+        device_id: { type: string, format: uuid }
+
+    Purpose:
+      type: string
+      enum: [TS, CP, CRASH, INV, WAR, DSP, EMS, LIC, CRT, CIT, AUD]
+
+    Identifier:
+      type: object
+      required: [type, value]
+      properties:
+        type: { type: string, enum: [NIC, DL, PLATE] }
+        value: { type: string, minLength: 2, maxLength: 32 }
+
+    Location:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+        text: { type: string, maxLength: 200 }
+
+    Availability:
+      type: string
+      enum: [available, unknown, not_permitted]
+      description: unknown = source timed out or failed (never stale data); not_permitted = denied by policy
+
+    SourceStatus:
+      type: object
+      required: [agency, status]
+      properties:
+        agency: { type: string }
+        status: { type: string, enum: [ok, timeout, error, not_called] }
+        latency_ms: { type: integer }
+
+    MatchState:
+      type: string
+      enum: [NONE, UNCONFIRMED_MATCH, CONFIRMED, CLEARED]
+
+    RoadsideCheckRequest:
+      type: object
+      required: [identifier, purpose]
+      properties:
+        identifier: { $ref: '#/components/schemas/Identifier' }
+        purpose:
+          type: string
+          enum: [TS, CP]
+        location: { $ref: '#/components/schemas/Location' }
+
+    Person:
+      type: object
+      required: [availability]
+      properties:
+        availability: { $ref: '#/components/schemas/Availability' }
+        full_name: { type: string }
+        date_of_birth: { type: string, format: date }
+        photo_ref: { type: string, description: Short-lived URL to a generated placeholder image (synthetic) }
+        licence_no_masked: { type: string, example: 'SYN-DL-****42' }
+
+    LicenceStatus:
+      type: object
+      required: [availability]
+      properties:
+        availability: { $ref: '#/components/schemas/Availability' }
+        status: { type: string, enum: [VALID, SUSPENDED, DISQUALIFIED, EXPIRED, NO_LICENCE, UNKNOWN] }
+        classes:
+          type: array
+          items: { type: string }
+        expiry_date: { type: string, format: date }
+        endorsements:
+          type: array
+          items: { type: string }
+        override_reason:
+          type: string
+          description: Set when a confirmed TRUSTLINE licence action overrides the licensing source (e.g. suspend_6m)
+
+    StatusCard:
+      type: object
+      required: [request_id, generated_at, ledger_seq, purpose, synthetic, legal_rules_verified, sources]
+      properties:
+        request_id: { type: string }
+        generated_at: { type: string, format: date-time }
+        ledger_seq: { type: integer }
+        purpose: { $ref: '#/components/schemas/Purpose' }
+        synthetic: { type: boolean, const: true }
+        legal_rules_verified: { type: boolean }
+        person: { $ref: '#/components/schemas/Person' }
+        licence: { $ref: '#/components/schemas/LicenceStatus' }
+        points:
+          type: object
+          required: [availability]
+          properties:
+            availability: { $ref: '#/components/schemas/Availability' }
+            band: { type: string, enum: ['0-4', '5-9', '10-13', '14+'] }
+        vehicle:
+          type: object
+          required: [availability]
+          properties:
+            availability: { $ref: '#/components/schemas/Availability' }
+            plate: { type: string }
+            make: { type: string }
+            model: { type: string }
+            colour: { type: string }
+            year: { type: integer }
+            registration_status: { type: string, enum: [REGISTERED, EXPIRED, DEREGISTERED, UNKNOWN] }
+            registration_expiry: { type: string, format: date }
+            insurance:
+              type: object
+              required: [availability]
+              properties:
+                availability: { $ref: '#/components/schemas/Availability' }
+                status: { type: string, enum: [VALID, EXPIRED, NONE, UNKNOWN] }
+                expiry: { type: string, format: date }
+            inspection:
+              type: object
+              required: [availability]
+              properties:
+                availability: { $ref: '#/components/schemas/Availability' }
+                status: { type: string, enum: [PASSED, EXPIRED, FAILED, NONE, UNKNOWN] }
+                expiry: { type: string, format: date }
+        compliance:
+          type: object
+          required: [availability]
+          properties:
+            availability: { $ref: '#/components/schemas/Availability' }
+            unpaid_tickets_count: { type: integer, minimum: 0 }
+            unpaid_total_ecd: { type: number, minimum: 0 }
+            oldest_unpaid_days: { type: integer, minimum: 0 }
+        alerts:
+          type: object
+          required: [availability]
+          properties:
+            availability: { $ref: '#/components/schemas/Availability' }
+            warrant: { $ref: '#/components/schemas/MatchState' }
+            stolen_vehicle: { $ref: '#/components/schemas/MatchState' }
+            hit_ids:
+              type: array
+              items: { type: string, format: uuid }
+            contact: { type: string, description: Dispatch line to call before acting on a match }
+        court:
+          type: object
+          required: [availability]
+          properties:
+            availability: { $ref: '#/components/schemas/Availability' }
+            court_date_pending: { type: boolean }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/SourceStatus' }
+        denied_groups:
+          type: array
+          items: { type: string }
+
+    InvestigationRequest:
+      type: object
+      required: [identifier, purpose, datasets]
+      properties:
+        identifier: { $ref: '#/components/schemas/Identifier' }
+        purpose:
+          type: string
+          enum: [INV, WAR, CRASH]
+        case_ref: { type: string }
+        warrant_ref: { type: string }
+        incident_ref: { type: string }
+        datasets:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [identity_basic, licence_status, alerts_summary, criminal_record, vehicle_history,
+                   accident_history, vehicle_registration, insurance_detail, inspection_history]
+
+    InvestigationResult:
+      type: object
+      required: [request_id, ledger_seq, purpose, synthetic, permitted_groups, denied_groups, sources]
+      properties:
+        request_id: { type: string }
+        ledger_seq: { type: integer }
+        purpose: { $ref: '#/components/schemas/Purpose' }
+        synthetic: { type: boolean, const: true }
+        permitted_groups:
+          type: array
+          items: { type: string }
+        denied_groups:
+          type: array
+          items: { type: string }
+        person: { $ref: '#/components/schemas/Person' }
+        licence: { $ref: '#/components/schemas/LicenceStatus' }
+        datasets:
+          type: object
+          description: One key per permitted dataset; values are the agency's records for that dataset
+          additionalProperties:
+            type: object
+            required: [availability]
+            properties:
+              availability: { $ref: '#/components/schemas/Availability' }
+              records:
+                type: array
+                items: { type: object }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/SourceStatus' }
+
+    Hit:
+      type: object
+      required: [id, kind, status, created_at, source_ref]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [warrant, stolen_vehicle] }
+        status: { type: string, enum: [unconfirmed, confirmed, cleared] }
+        created_at: { type: string, format: date-time }
+        source_ref: { type: string }
+        raised_by_badge: { type: string }
+        person_name: { type: string }
+        decided_by_badge: { type: string }
+        decided_at: { type: string, format: date-time }
+        decision_note: { type: string }
+
+    TicketIssueRequest:
+      type: object
+      required: [driver, offence_code, occurred_at]
+      properties:
+        driver: { $ref: '#/components/schemas/Identifier' }
+        vehicle_plate: { type: string }
+        offence_code: { type: string, example: SPEED-20 }
+        occurred_at: { type: string, format: date-time }
+        location: { $ref: '#/components/schemas/Location' }
+        incident_ref:
+          type: string
+          description: Groups several offences from one occurrence (section 179(3) same-incident rule)
+
+    Ticket:
+      type: object
+      required: [ticket_no, issued_at, offence_code, status, synthetic]
+      properties:
+        ticket_no: { type: string }
+        issued_at: { type: string, format: date-time }
+        offence_code: { type: string }
+        offence_description: { type: string }
+        demerit_paragraph: { type: [string, 'null'] }
+        demerit_points: { type: [integer, 'null'] }
+        penalty_ecd: { type: [number, 'null'] }
+        penalty_is_illustrative: { type: boolean }
+        status: { type: string, enum: [issued, paid, referred_to_court, convicted, dismissed, withdrawn] }
+        payment_due_at: { type: string, format: date-time }
+        location_text: { type: string }
+        court_case_ref: { type: string }
+        next_hearing_at: { type: string, format: date-time }
+        synthetic: { type: boolean, const: true }
+
+    CourtOutcome:
+      type: object
+      required: [court_case_ref, outcome, decided_at]
+      properties:
+        court_case_ref: { type: string }
+        ticket_no: { type: string }
+        outcome: { type: string, enum: [convicted, dismissed, withdrawn] }
+        decided_at: { type: string, format: date-time }
+        schedule_paragraph: { type: string, description: Schedule 2 paragraph for court convictions not arising from a ticket }
+        appeal_status: { type: string, enum: [none, pending, upheld, overturned] }
+
+    ProposedAction:
+      type: object
+      required: [id, kind, status, created_at, basis, rules_verified]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [notice_11_13, interview_14_17, suspend_6m, suspend_1y, suspend_until_compliance, disqualify_unpaid_fine] }
+        status: { type: string, enum: [pending, confirmed, rejected, superseded] }
+        created_at: { type: string, format: date-time }
+        driver_name: { type: string }
+        licence_no_masked: { type: string }
+        rules_verified: { type: boolean }
+        basis:
+          type: object
+          required: [rule, points_in_force]
+          properties:
+            rule: { type: string, example: 's.179(10): 10 or more points within one year' }
+            points_in_force: { type: integer }
+            window_start: { type: string, format: date }
+            conviction_ids:
+              type: array
+              items: { type: string, format: uuid }
+        decided_by_badge: { type: string }
+        decided_at: { type: string, format: date-time }
+        decision_note: { type: string }
+        effective_from: { type: string, format: date-time }
+        effective_until: { type: string, format: date-time }
+        appeal_deadline: { type: string, format: date-time }
+
+    DriverRecord:
+      type: object
+      required: [synthetic, legal_rules_verified]
+      properties:
+        synthetic: { type: boolean, const: true }
+        legal_rules_verified: { type: boolean }
+        person: { $ref: '#/components/schemas/Person' }
+        licence: { $ref: '#/components/schemas/LicenceStatus' }
+        points:
+          type: object
+          properties:
+            points_in_force: { type: integer }
+            convictions:
+              type: array
+              items:
+                type: object
+                properties:
+                  schedule_paragraph: { type: string }
+                  points: { type: integer }
+                  convicted_at: { type: string, format: date-time }
+                  counted: { type: boolean }
+                  expires_at: { type: string, format: date-time }
+            proposed_actions:
+              type: array
+              items: { $ref: '#/components/schemas/ProposedAction' }
+        vehicles:
+          type: array
+          items:
+            type: object
+            properties:
+              plate: { type: string }
+              make: { type: string }
+              model: { type: string }
+              registration_status: { type: string }
+              insurance_status: { type: string }
+              inspection_status: { type: string }
+        tickets:
+          type: array
+          items: { $ref: '#/components/schemas/Ticket' }
+        court:
+          type: array
+          items:
+            type: object
+            properties:
+              court_case_ref: { type: string }
+              status: { type: string }
+              next_hearing_at: { type: string, format: date-time }
+              outcome: { type: string }
+
+    AccessLogEntry:
+      type: object
+      required: [seq, occurred_at, agency, purpose, request_kind, decision]
+      properties:
+        seq: { type: integer }
+        occurred_at: { type: string, format: date-time }
+        agency: { type: string }
+        unit: { type: string }
+        officer_badge: { type: string }
+        purpose: { $ref: '#/components/schemas/Purpose' }
+        purpose_description: { type: string }
+        case_ref: { type: string }
+        request_kind: { type: string }
+        decision: { type: string, enum: [allow, partial, deny, error, rate_limited] }
+        offline: { type: boolean }
+        deferred_until:
+          type: string
+          format: date-time
+          description: Present only on entries released after an approved deferral
+
+    AccessLogPage:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/AccessLogEntry' }
+        next_cursor: { type: string }
+
+    Dispute:
+      type: object
+      required: [id, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        event_seq: { type: integer }
+        ticket_no: { type: string }
+        body: { type: string }
+        status: { type: string, enum: [open, under_review, upheld, not_upheld] }
+        created_at: { type: string, format: date-time }
+
+    EmergencyCard:
+      type: object
+      required: [ledger_seq, synthetic, source]
+      properties:
+        ledger_seq: { type: integer }
+        synthetic: { type: boolean, const: true }
+        source: { type: string, const: MOH }
+        blood_group: { type: string }
+        allergies:
+          type: array
+          items: { type: string }
+        critical_conditions:
+          type: array
+          items: { type: string }
+        emergency_contact:
+          type: object
+          properties:
+            name: { type: string }
+            phone: { type: string }
+
+    Deferral:
+      type: object
+      required: [id, event_seq, case_ref, status, expires_at]
+      properties:
+        id: { type: string, format: uuid }
+        event_seq: { type: integer }
+        case_ref: { type: string }
+        reason: { type: string }
+        requested_by_badge: { type: string }
+        approved_by_badge: { type: string }
+        status: { type: string, enum: [pending_approval, active, released, rejected] }
+        expires_at: { type: string, format: date-time }
+        oversight_acknowledged_at: { type: string, format: date-time }
+        released_at: { type: string, format: date-time }
+
+    Alert:
+      type: object
+      required: [id, rule_code, severity, status, created_at, event_seqs]
+      properties:
+        id: { type: string, format: uuid }
+        rule_code: { type: string }
+        severity: { type: string, enum: [info, low, medium, high] }
+        officer_badge: { type: string }
+        status: { type: string, enum: [open, reviewing, closed_no_issue, referred] }
+        created_at: { type: string, format: date-time }
+        event_seqs:
+          type: array
+          items: { type: integer }
+        review_note: { type: string }
+
+    MonthlyReport:
+      type: object
+      required: [period, generated_at, aggregates, checkpoint_roots]
+      properties:
+        period: { type: string }
+        generated_at: { type: string, format: date-time }
+        aggregates:
+          type: object
+          description: Counts only — by agency, purpose, decision; deferrals; alerts by rule and outcome; disputes
+          additionalProperties: true
+        checkpoint_roots:
+          type: array
+          items:
+            type: object
+            required: [from_seq, to_seq, merkle_root]
+            properties:
+              from_seq: { type: integer }
+              to_seq: { type: integer }
+              merkle_root: { type: string, description: hex }
+
+    LedgerStatus:
+      type: object
+      required: [head_seq, ok]
+      properties:
+        head_seq: { type: integer }
+        last_checkpoint_to_seq: { type: integer }
+        last_checkpoint_at: { type: string, format: date-time }
+        last_verified_at: { type: string, format: date-time }
+        ok: { type: boolean }
+        first_bad_seq: { type: integer }
+
+    OfflineBundle:
+      type: object
+      required: [bundle_id, issued_at, expires_at, key_id, ciphertext]
+      properties:
+        bundle_id: { type: string, format: uuid }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        key_id: { type: string }
+        ciphertext: { type: string, contentEncoding: base64 }
+
+    OfflineCheck:
+      type: object
+      required: [recorded_at, identifier, purpose, flags_seen]
+      properties:
+        recorded_at: { type: string, format: date-time }
+        identifier: { $ref: '#/components/schemas/Identifier' }
+        purpose:
+          type: string
+          enum: [TS, CP]
+        flags_seen:
+          type: array
+          items: { type: string, enum: [suspended, disqualified, stolen, warrant] }
+        location: { $ref: '#/components/schemas/Location' }

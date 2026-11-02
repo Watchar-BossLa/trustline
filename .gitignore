@@ -1,0 +1,14 @@
+# local secrets and keys — never commit (HL9)
+.local/
+.env
+*.pem
+*.key
+# build outputs
+target/
+node_modules/
+apps/web/.next/
+apps/web/playwright-report/
+apps/web/test-results/
+# OS
+.DS_Store
+__pycache__/

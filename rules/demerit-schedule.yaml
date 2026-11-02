@@ -1,0 +1,76 @@
+# Demerit points — Motor Vehicles and Road Traffic Act, section 179 and Schedule 2.
+#
+# LEGAL STATUS: NOT VERIFIED.
+# Point values below were read on 2 Nov 2026 from the Attorney General's Chambers online
+# Revised Laws (2023) page for Schedule 2, whose text was garbled; values were matched to
+# offences by position. The section 179 thresholds were read from the same site, which labels
+# the 2023 revision "not yet authenticated through a Commencement Order".
+# Saint Lucian counsel must confirm every value against a certified copy before the pilot,
+# then set verified: true and record who verified it and when. Until then the UI shows the
+# pending-legal-verification banner (HL11).
+version: 1.0.0
+verified: false
+verified_by: null
+verified_on: null
+sources:
+  - https://www.attorneygeneralchambers.com/laws-of-saint-lucia/motor-vehicles-and-road-traffic-act/schedule-2
+  - https://www.attorneygeneralchambers.com/laws-of-saint-lucia/motor-vehicles-and-road-traffic-act/section-179
+
+schedule_2:
+  - { paragraph: "1(a)", offence: "Not reporting an accident involving injury", points: 7 }
+  - { paragraph: "1(b)", offence: "Not stopping after an accident", points: 7 }
+  - { paragraph: "2(a)", offence: "Driving without due care", points: 4 }
+  - { paragraph: "2(b)", offence: "Failing to obey a stop sign", points: 6 }
+  - { paragraph: "2(c)", offence: "Driving without reasonable consideration", points: 4 }
+  - { paragraph: "2(d)", offence: "Dangerous driving", points: 7 }
+  - { paragraph: "2(e)", offence: "Exceeding the speed limit by 20 mph or more", points: 7 }
+  - { paragraph: "3(a)", offence: "Exceeding the speed limit by 10 mph or more", points: 6 }
+  - { paragraph: "3(b)", offence: "Failing to obey a stop signal", points: 6 }
+  - { paragraph: "3(c)", offence: "Failing to obey a light signal", points: 6 }
+  - { paragraph: "3(d)", offence: "Failing to comply with the lawful direction of a police officer or traffic warden", points: 6 }
+  - { paragraph: "3(e)", offence: "Overtaking improperly", points: 4 }
+  - { paragraph: "4(a)", offence: "Not making an appropriate signal when stopping, turning or slowing down", points: 2 }
+  - { paragraph: "4(b)", offence: "Exceeding the speed limit by 5 mph or more", points: 2 }
+  - { paragraph: "4(c)", offence: "Negligently interrupting the free passage of traffic", points: 2 }
+  - { paragraph: "4(d)", offence: "Causing unnecessary obstruction", points: 2 }
+  - { paragraph: "4(e)", offence: "Parking in a restricted place", points: 2 }
+
+section_179:
+  recording:
+    trigger: conviction                 # s.179(1): after conviction for a Schedule 2 offence
+    appeal: no_points_until_upheld      # s.179(2): points removed while an appeal is pending; restored if upheld
+    same_incident:                      # s.179(3)
+      rule: highest_value_only
+      tie: record_at_most_two_convictions
+  expiry:
+    years: 3                            # s.179(4): points expire after 3 years if no new points recorded in that time
+    reset_on_new_points: true           # interpretation to confirm: a new recording restarts the 3-year window for all points
+  clear_after_suspension:
+    min_suspension_months: 3            # s.179(5): all points removed when a suspension of 3+ months ends
+  notices:
+    - { action: notice_11_13, min_points: 11, max_points: 13, window_years: 2 }      # s.179(6)
+    - { action: interview_14_17, min_points: 14, max_points: 17, window_years: 2 }   # s.179(7)-(9), discretionary
+  failure_to_attend_interview:
+    action: suspend_until_compliance
+    notice_days: 10                     # s.179(8)
+  mandatory_suspensions:
+    - { action: suspend_6m, min_points: 10, window_years: 1, months: 6 }             # s.179(10)
+    - { action: suspend_1y, min_points: 18, window_min_years: 1, window_max_years: 2, months: 12 }  # s.179(11)
+  concurrency: concurrent_with_unexpired  # s.179(12)
+  appeal:
+    to: Magistrate of a District Court
+    deadline_days: 10                   # s.179(13)
+  driving_while_suspended:              # s.179(14) — informational; prosecuted outside TRUSTLINE
+    max_fine_ecd: 2000
+    max_imprisonment_months: 6
+
+engine_design_choices:                  # TRUSTLINE choices, not statute — confirm with the Licensing Authority
+  - When a mandatory suspension is proposed, a discretionary interview for the same points is not proposed.
+  - Every proposed action waits for a licensing_officer decision (HL5); none takes effect automatically.
+  - Points shown to roadside officers are a band (0-4, 5-9, 10-13, 14+), never the exact history.
+
+section_107:                            # Disqualification for unpaid fines
+  trigger: fine_unpaid
+  days_after_proceedings_concluded: 30  # including any appeal
+  notice: registered_mail_by_licensing_authority
+  ends_on: clerk_of_court_confirms_payment

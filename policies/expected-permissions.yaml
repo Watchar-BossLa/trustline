@@ -1,0 +1,78 @@
+# Intended permissions — written by hand from the access design, NOT generated from the policy.
+# tools/policy_matrix.py evaluates policies/trustline.cedar over every role × purpose × field
+# group × context-flag combination and fails if the policy disagrees with this file.
+# The Rust matrix test in trustline-policy (node m2_policy) asserts the same table.
+#
+# Reading: a (role, purpose) row allows exactly `allow` when every flag in `requires` is true.
+# Every combination not listed here must be denied.
+version: 1.0.0
+flags: [device_attested, case_ref_valid, warrant_ref_valid, incident_active, emergency_consent, is_self]
+purposes: [TS, CP, CRASH, INV, WAR, DSP, EMS, LIC, CRT, CIT, AUD]
+police_roles: [traffic_officer, patrol_officer, dispatcher, investigator, crash_investigator, supervisor]
+
+roadside_groups: &roadside
+  [identity_basic, licence_status, points_band, vehicle_registration, insurance_status,
+   inspection_status, compliance_summary, alerts_summary, court_flag]
+
+principals:
+  - { type: Officer, role: traffic_officer }
+  - { type: Officer, role: patrol_officer }
+  - { type: Officer, role: supervisor }
+  - { type: Officer, role: dispatcher }
+  - { type: Officer, role: investigator }
+  - { type: Officer, role: crash_investigator }
+  - { type: Officer, role: licensing_officer }
+  - { type: Officer, role: ems_responder }
+  - { type: Officer, role: oversight_analyst }
+  - { type: Service, role: court_system }
+  - { type: Citizen, role: citizen }
+
+rows:
+  - { role: traffic_officer, purpose: TS, requires: [device_attested], allow: *roadside }
+  - { role: traffic_officer, purpose: CP, requires: [device_attested], allow: *roadside }
+  - { role: patrol_officer, purpose: TS, requires: [device_attested], allow: *roadside }
+  - { role: patrol_officer, purpose: CP, requires: [device_attested], allow: *roadside }
+  - { role: supervisor, purpose: TS, requires: [device_attested], allow: *roadside }
+  - { role: supervisor, purpose: CP, requires: [device_attested], allow: *roadside }
+  - role: dispatcher
+    purpose: DSP
+    requires: [device_attested]
+    allow: [identity_basic, alerts_summary]
+  - role: investigator
+    purpose: INV
+    requires: [device_attested, case_ref_valid]
+    allow: [identity_basic, licence_status, alerts_summary, criminal_record, vehicle_history, accident_history]
+  - role: investigator
+    purpose: WAR
+    requires: [device_attested, warrant_ref_valid]
+    allow: [identity_basic, alerts_summary]
+  - role: crash_investigator
+    purpose: CRASH
+    requires: [device_attested, incident_active]
+    allow: [identity_basic, licence_status, vehicle_registration, accident_history, insurance_detail, inspection_history]
+  - role: licensing_officer
+    purpose: LIC
+    requires: [device_attested]
+    allow: [identity_basic, licence_status, points_detail, ticket_detail, court_timeline]
+  - role: ems_responder
+    purpose: EMS
+    requires: [device_attested, incident_active, emergency_consent]
+    allow: [identity_basic, emergency_card]
+  - role: oversight_analyst
+    purpose: AUD
+    requires: [device_attested]
+    allow: [ledger_metadata]
+  - role: court_system
+    purpose: CRT
+    requires: []
+    allow: [ticket_detail, court_timeline]
+  - role: citizen
+    purpose: CIT
+    requires: [is_self]
+    allow: [identity_basic, licence_status, points_detail, vehicle_registration, insurance_status,
+            inspection_status, compliance_summary, ticket_detail, court_timeline, access_log_own]
+
+invariants:
+  - No police role is ever allowed a field group whose domain is health, under any purpose or flags.
+  - health_record and cross_domain_profile are never allowed to anyone.
+  - Officers on unattested devices are allowed nothing.

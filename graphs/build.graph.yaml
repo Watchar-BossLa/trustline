@@ -1,0 +1,2299 @@
+# TRUSTLINE build graph (HEF v1.1.0 Graph Layer)
+# Execution order for Claude Code. One node = one task prompt (prompts/nodes/).
+# Lint:   python3 tools/graph_lint.py
+# Render: python3 tools/render_node_prompts.py
+# Edge conditions use `when` (YAML 1.1 parses `on` as a boolean).
+
+graph:
+  id: trustline_build
+  version: 1.0.0
+  hef_ref:
+    name: TRUSTLINE
+    version: 1.0.0
+  entry: plan_build
+  inputs:
+    hef:
+      type: file
+      required: true
+      default: TRUSTLINE.hef.md
+    registry:
+      type: file
+      required: true
+      default: spec/registry.yaml
+  budget:
+    total_tokens: 8000000
+    max_wall_seconds: 259200
+    reserve_fraction: 0.1
+  budget_note: First-run planning budgets. Tune from tasks/trace.jsonl after M1; keep node ids stable.
+policy:
+  on_unrouted_exit:
+    route_to: aborted
+  max_concurrency: 2
+  trace_path: tasks/trace.jsonl
+  lessons_path: tasks/lessons.md
+loops:
+- id: plan_revise
+  max_iterations: 2
+- id: plan_human_revise
+  max_iterations: 3
+- id: fix_m1_loop
+  max_iterations: 3
+- id: fix_m2_loop
+  max_iterations: 3
+- id: fix_m3_loop
+  max_iterations: 3
+- id: fix_m4_loop
+  max_iterations: 3
+- id: fix_m5_loop
+  max_iterations: 3
+- id: fix_m6_loop
+  max_iterations: 3
+- id: fix_m7_loop
+  max_iterations: 3
+- id: demo_feedback_loop
+  max_iterations: 3
+nodes:
+- id: plan_build
+  kind: prompt
+  objective: Produce an implementation plan for milestones M1 to M7 in tasks/todo.md that covers every must requirement
+    and acceptance criterion, respects every hard limit, and names the files each task touches.
+  implements:
+  - M1
+  - M2
+  - M3
+  - M4
+  - M5
+  - M6
+  - M7
+  critical: true
+  inputs:
+    spec:
+      type: file
+      source: $graph.input.hef
+    registry:
+      type: file
+      source: $graph.input.registry
+  outputs:
+    plan_path:
+      type: file
+      required: true
+    open_questions:
+      type: list
+      required: false
+  contract:
+    preconditions:
+    - TRUSTLINE.hef.md, spec/registry.yaml and every file under docs/ have been read
+    postconditions:
+    - tasks/todo.md lists every task T1.1 to T7.5 as a checkbox with the files it touches
+    - Every must requirement and every acceptance criterion id appears against at least one task
+    - The plan names the crates, binaries and app routes exactly as in docs/02-architecture.md
+    - Open questions are listed separately; none is silently decided
+  context:
+    mode: flat
+    include:
+    - hef.all
+    - spec/registry.yaml
+    - docs/01-product-brief.md
+    - docs/02-architecture.md
+    - docs/adr/
+  reasoning:
+    mode: got
+    branches: 3
+    merge: critique
+    budget_multiplier: 2.5
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 20000
+    max_calls: 60
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  prompt:
+    role: Principal engineer planning a security-critical government system build
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_plan
+  kind: verifier
+  objective: Confirm the plan is complete, traceable and within the hard limits before any code is written.
+  implements:
+  - M1
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - tasks/todo.md exists
+    postconditions:
+    - Every must requirement and acceptance criterion id is mapped to a task
+    - No task contradicts a hard limit HL1 to HL12
+    - Every task names its files and its verification
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - spec/registry.yaml
+  reasoning:
+    mode: direct
+  command: python3 tools/graph_lint.py --plan tasks/todo.md
+  budget:
+    max_input_tokens: 60000
+    max_output_tokens: 6000
+    max_calls: 20
+    max_wall_seconds: 1800
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: approve_plan
+  kind: human
+  objective: Kelvin approves the plan or asks for changes before implementation starts.
+  implements:
+  - M1
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    open_questions:
+      type: list
+      source: $node.plan_build.open_questions
+  outputs:
+    decision:
+      type: string
+      required: true
+    notes:
+      type: string
+      required: false
+  ask: Here is the implementation plan in tasks/todo.md and the open questions. Approve it, or tell me what to change.
+  budget:
+    max_input_tokens: 0
+    max_output_tokens: 0
+    max_calls: 1
+    max_wall_seconds: 604800
+  exits:
+  - approved
+  - rejected
+  - timeout
+- id: m1_scaffold
+  kind: prompt
+  objective: Create the Cargo workspace, compose stack, Makefile, CI and typed configuration with the DEV_AUTH guard.
+  implements:
+  - R12
+  - T1.1
+  - T1.2
+  - T1.3
+  - T1.4
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    postconditions:
+    - cargo build --workspace succeeds
+    - make verify runs every gate listed in docs/08
+    - DEV_AUTH with TRUSTLINE_ENV=production refuses to start (test)
+    - .env.example contains no secret values
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/02-architecture.md
+    - docs/adr/0006-demo-auth-and-pilot-auth.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - Cargo.toml
+  - crates/*/
+  - services/mock-agencies/
+  - docker-compose.yml
+  - Makefile
+  - .github/workflows/ci.yml
+  - .env.example
+  - crates/core/src/config.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m1_schema
+  kind: prompt
+  objective: Turn db/schema.sql into sqlx migrations with roles and append-only triggers, plus the no-master-records
+    schema test.
+  implements:
+  - R4
+  - R12
+  - T1.5
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m1_scaffold exited success
+    postconditions:
+    - Migrations reproduce db/schema.sql exactly (diff of pg_dump --schema-only is empty)
+    - App role cannot UPDATE or DELETE ledger.access_event
+    - Schema test lists every table and fails if a master-record table appears
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - db/schema.sql
+    - docs/03-data-model.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - db/migrations/
+  - crates/api/tests/schema.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m1_seed
+  kind: prompt
+  objective: Implement the deterministic synthetic data generator for TRUSTLINE tables and mock-agency fixtures.
+  implements:
+  - T1.6
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m1_schema exited success
+    postconditions:
+    - Personas S1 to S10 and officers in docs/09 exist after make seed
+    - Same seed gives byte-identical fixtures
+    - Every generated identifier starts with SYN and every name is from the fictional list
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/09-synthetic-data.md
+    - rules/
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/cli/src/seed/
+  - services/mock-agencies/fixtures/
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m1
+  kind: verifier
+  objective: Confirm the foundation builds, migrates and seeds cleanly.
+  implements:
+  - V1.1
+  - V1.2
+  - V1.3
+  - R12
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V1.1 make verify passes on a clean clone
+    - V1.2 migrations apply; ledger UPDATE/DELETE rejected
+    - V1.3 seeding is deterministic
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: make verify && make db && make seed && cargo test -p trustline-api --test schema
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m1
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m1 and fix it without widening M1 scope.
+  implements:
+  - M1
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m1.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m1 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m2_policy
+  kind: prompt
+  objective: Implement the Cedar policy engine and the exhaustive permission matrix test.
+  implements:
+  - R2
+  - R3
+  - T2.1
+  - T2.2
+  - AC3
+  - AC4
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - verify_m1 exited success
+    postconditions:
+    - Policies validate against the schema at startup or the process exits
+    - Matrix test covers every role, reason code, field group and context flag combination
+    - Matrix equals the expected-permissions table in docs/05
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - policies/
+    - docs/05-access-policy.md
+    - rules/reason-codes.yaml
+    - rules/field-groups.yaml
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/policy/
+  - policies/tests/
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m2_ledger
+  kind: prompt
+  objective: Implement the hash-chained, signed ledger, checkpoints, ledger middleware and the verify command.
+  implements:
+  - R5
+  - T2.3
+  - T2.4
+  - AC5
+  - AC6
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m2_policy exited success
+    postconditions:
+    - Every ledger-scoped request writes exactly one entry, including errors
+    - verify detects modify, delete and reorder at the first bad sequence
+    - No raw identifier is written to the ledger (test scans entries)
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/02-architecture.md
+    - docs/03-data-model.md
+    - docs/adr/0004-tamper-evident-ledger.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/ledger/
+  - crates/api/src/middleware/ledger.rs
+  - crates/cli/src/ledger.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m2
+  kind: verifier
+  objective: Confirm policy decisions and ledger integrity.
+  implements:
+  - V2.1
+  - V2.2
+  - V2.3
+  - AC3
+  - AC4
+  - AC5
+  - AC6
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V2.1 policy matrix passes; health isolation holds
+    - V2.2 tamper tests pass
+    - V2.3 one entry per ledger-scoped request
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: cargo test -p trustline-policy -p trustline-ledger && cargo test -p trustline-api --test ledger_coverage
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m2
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m2 and fix it without widening M2 scope.
+  implements:
+  - M2
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m2.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m2 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m3_agencies
+  kind: prompt
+  objective: Build the mock agencies service and the X-Road-shaped adapters.
+  implements:
+  - R4
+  - T3.1
+  - T3.2
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - verify_m2 exited success
+    postconditions:
+    - Each adapter has a contract test against the mock
+    - Every adapter call sends client, service, message id, user id and purpose headers
+    - Latency and failure injection are configurable per agency
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/02-architecture.md
+    - docs/adr/0002-xroad-exchange.md
+    - docs/09-synthetic-data.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - services/mock-agencies/
+  - crates/adapters/
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m3_broker
+  kind: prompt
+  objective: Implement the broker, status card, hit confirmation, investigation queries and rate limits.
+  implements:
+  - R1
+  - R9
+  - R11
+  - T3.3
+  - T3.4
+  - T3.5
+  - AC1
+  - AC2
+  - AC11
+  - AC13
+  - AC19
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m3_agencies exited success
+    postconditions:
+    - Only policy-permitted adapter calls are made (test asserts the mock received no other call)
+    - A failed source yields UNKNOWN fields with source status
+    - Rate limit returns 429 and writes a ledger entry
+    - Responses validate against api/openapi.yaml
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - api/openapi.yaml
+    - docs/04-api.md
+    - docs/05-access-policy.md
+    - rules/field-groups.yaml
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/broker/
+  - crates/api/src/routes/roadside.rs
+  - crates/api/src/routes/hits.rs
+  - crates/api/src/routes/investigations.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m3_offline
+  kind: prompt
+  objective: Implement the signed, encrypted, expiring offline bundle and sync endpoint.
+  implements:
+  - R14
+  - T3.6
+  - AC15
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m3_broker exited success
+    postconditions:
+    - trustline-offline has no tokio dependency and exposes a UniFFI-compatible API
+    - Tampered, unknown-key and expired bundles are rejected
+    - Synced checks create ledger entries with offline = true
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/02-architecture.md
+    - docs/06-security-threat-model.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/offline/
+  - crates/api/src/routes/offline.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m3
+  kind: verifier
+  objective: Confirm the roadside path end to end.
+  implements:
+  - V3.1
+  - V3.2
+  - V3.3
+  - AC1
+  - AC2
+  - AC11
+  - AC13
+  - AC15
+  - AC19
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V3.1 personas S1–S5 cards correct; p95 under 2 s
+    - V3.2 agency outage yields UNKNOWN
+    - V3.3 bundle and rate-limit tests pass
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: cargo test --workspace && make loadtest-smoke
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m3
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m3 and fix it without widening M3 scope.
+  implements:
+  - M3
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m3.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m3 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m4_tickets
+  kind: prompt
+  objective: Implement tickets, payments, court referral and outcomes, section 107 and the court timeline.
+  implements:
+  - R7
+  - R13
+  - R18
+  - T4.1
+  - T4.2
+  - T4.3
+  - AC14
+  - AC21
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - verify_m3 exited success
+    postconditions:
+    - Ticket identifiers are envelope-encrypted at rest
+    - Court outcome and payment endpoints require the court_system service principal
+    - Section 107 detection runs on schedule and is idempotent
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - rules/offences.yaml
+    - api/openapi.yaml
+    - docs/03-data-model.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/tickets/
+  - crates/api/src/routes/tickets.rs
+  - crates/api/src/routes/court.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m4_demerit
+  kind: prompt
+  objective: Implement the demerit engine, proposed actions and Licensing Authority decisions.
+  implements:
+  - R8
+  - T4.4
+  - T4.5
+  - T4.6
+  - AC8
+  - AC9
+  - AC10
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m4_tickets exited success
+    postconditions:
+    - The engine is pure (no I/O) and versioned by the rules file hash
+    - Every row of the docs/08 section 179 table has a passing test
+    - No licence action is effective without a decision event
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - rules/demerit-schedule.yaml
+    - docs/08-verification-plan.md
+    - docs/07-privacy-and-legal-basis.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/demerit/
+  - crates/api/src/routes/licensing.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m4
+  kind: verifier
+  objective: Confirm tickets, points and licence actions.
+  implements:
+  - V4.1
+  - V4.2
+  - V4.3
+  - AC8
+  - AC9
+  - AC10
+  - AC14
+  - AC21
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V4.1 section 179 table fully covered
+    - V4.2 S6 flow passes
+    - V4.3 S10 flow passes
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: cargo test -p trustline-demerit -p trustline-tickets && cargo test -p trustline-api --test flows
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m4
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m4 and fix it without widening M4 scope.
+  implements:
+  - M4
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m4.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m4 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m5_citizen
+  kind: prompt
+  objective: Implement the citizen record, access log, deferrals, disputes and emergency card.
+  implements:
+  - R6
+  - R15
+  - R16
+  - T5.1
+  - T5.2
+  - T5.3
+  - AC7
+  - AC16
+  - AC20
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - verify_m4 exited success
+    postconditions:
+    - Citizen endpoints only ever resolve the caller's own subject hash
+    - Deferrals need supervisor approval, cap at the configured maximum and release automatically
+    - EMS access is denied without an active incident or consent
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - api/openapi.yaml
+    - docs/05-access-policy.md
+    - docs/07-privacy-and-legal-basis.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/api/src/routes/me.rs
+  - crates/api/src/routes/ems.rs
+  - crates/api/src/routes/deferrals.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m5_oversight
+  kind: prompt
+  objective: Implement the anomaly engine, alerts, monthly report and ledger status endpoint.
+  implements:
+  - R10
+  - T5.4
+  - T5.5
+  - AC12
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m5_citizen exited success
+    postconditions:
+    - Every rule in rules/anomaly-rules.yaml has a test that fires it and one that does not
+    - Reports contain aggregates only, never identifiers
+    - Alert reviews are themselves ledger entries
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - rules/anomaly-rules.yaml
+    - docs/06-security-threat-model.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - crates/oversight/
+  - crates/api/src/routes/oversight.rs
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m5
+  kind: verifier
+  objective: Confirm citizen transparency and oversight.
+  implements:
+  - V5.1
+  - V5.2
+  - V5.3
+  - AC7
+  - AC12
+  - AC16
+  - AC20
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V5.1 S8 misuse alert raised
+    - V5.2 deferral lifecycle passes
+    - V5.3 EMS flow and police denial pass
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: cargo test -p trustline-oversight && cargo test -p trustline-api --test citizen --test oversight
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m5
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m5 and fix it without widening M5 scope.
+  implements:
+  - M5
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m5.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m5 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m6_web
+  kind: prompt
+  objective: Build the Next.js app with officer, dispatch, licensing, citizen, EMS and oversight screens and the
+    Playwright demo flow.
+  implements:
+  - R17
+  - T6.1
+  - T6.2
+  - T6.3
+  - T6.4
+  - T6.5
+  - AC17
+  - AC22
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - verify_m5 exited success
+    postconditions:
+    - The web app calls only the API; it holds no business rules
+    - Every screen shows the SYNTHETIC and pending-legal-verification banners
+    - The persona switcher is absent when DEV_AUTH is off
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/10-demo-script.md
+    - api/openapi.yaml
+    - docs/04-api.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 300000
+    max_output_tokens: 100000
+    max_calls: 180
+    max_wall_seconds: 14400
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - apps/web/
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m6
+  kind: verifier
+  objective: Confirm the screens, accessibility and performance.
+  implements:
+  - V6.1
+  - V6.2
+  - V6.3
+  - AC17
+  - AC22
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V6.1 Playwright demo flow passes
+    - V6.2 axe checks pass
+    - V6.3 status card under 3 s on 3G
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test:e2e
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m6
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m6 and fix it without widening M6 scope.
+  implements:
+  - M6
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m6.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m6 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: m7_security
+  kind: prompt
+  objective: Harden the build against the threat model and run every security gate.
+  implements:
+  - R11
+  - R12
+  - T7.1
+  - T7.2
+  - T7.3
+  - AC13
+  - AC18
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - verify_m6 exited success
+    postconditions:
+    - Each threat in docs/06 has status mitigated, accepted with reason, or deferred to pilot
+    - No medium-or-higher finding from cargo-deny, gitleaks, npm audit or ZAP remains open
+    - Load-test results are recorded in docs/08
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/06-security-threat-model.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - docs/06-security-threat-model.md
+  - docs/08-verification-plan.md
+  - deny.toml
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+  prompt:
+    role: Security engineer; use the security-reviewer subagent for an independent pass
+- id: m7_demo
+  kind: prompt
+  objective: Make the demo reproducible from a fresh clone and update all state documents.
+  implements:
+  - T7.4
+  - T7.5
+  - AC17
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - Plan approved (tasks/todo.md exists and approve_plan exited approved)
+    - m7_security exited success
+    postconditions:
+    - make demo from a fresh clone needs under 10 minutes of setup
+    - README, CLAUDE.md Current State and tasks/todo.md review are current
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/10-demo-script.md
+    - README.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 200000
+    max_output_tokens: 60000
+    max_calls: 120
+    max_wall_seconds: 10800
+  retry:
+    max: 2
+    mutate:
+    - add_feedback
+  files_touched:
+  - README.md
+  - CLAUDE.md
+  - tasks/todo.md
+  - Makefile
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: verify_m7
+  kind: verifier
+  objective: Confirm every quality gate and the demo from a fresh clone.
+  implements:
+  - V7.1
+  - V7.2
+  - V7.3
+  - AC13
+  - AC17
+  - AC18
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+  outputs:
+    report:
+      type: file
+      required: true
+    failures:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - All build nodes of this milestone exited success
+    postconditions:
+    - V7.1 all gates green
+    - V7.2 every threat has a status
+    - V7.3 fresh-clone demo under 10 minutes setup
+  context:
+    mode: flat
+    include:
+    - hef.verification
+    - docs/08-verification-plan.md
+    - tasks/lessons.md
+  reasoning:
+    mode: direct
+  command: make verify && make demo-check
+  budget:
+    max_input_tokens: 80000
+    max_output_tokens: 8000
+    max_calls: 40
+    max_wall_seconds: 3600
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+- id: fix_m7
+  kind: prompt
+  objective: Find the root cause of every failure reported by verify_m7 and fix it without widening M7 scope.
+  implements:
+  - M7
+  critical: false
+  inputs:
+    plan:
+      type: file
+      source: $node.plan_build.plan_path
+    failures:
+      type: list
+      source: $node.verify_m7.failures
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - verify_m7 exited fail with a non-empty failures list
+    postconditions:
+    - Each failure has a stated root cause and a fix, not a workaround
+    - No test was weakened, skipped or deleted to make it pass
+    - A lesson is appended to tasks/lessons.md for each distinct root cause
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/08-verification-plan.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+    - escalate_model
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: approve_demo
+  kind: human
+  objective: Kelvin runs the demo script and signs off the build as pitch-ready, or lists changes.
+  implements:
+  - M7
+  - AC17
+  inputs:
+    report:
+      type: file
+      source: $node.verify_m7.report
+  outputs:
+    decision:
+      type: string
+      required: true
+    notes:
+      type: string
+      required: false
+  ask: 'The build passes every gate. Please run docs/10-demo-script.md and tell me: sign off, or the changes you
+    want.'
+  budget:
+    max_input_tokens: 0
+    max_output_tokens: 0
+    max_calls: 1
+    max_wall_seconds: 604800
+  exits:
+  - approved
+  - rejected
+  - timeout
+- id: apply_demo_feedback
+  kind: prompt
+  objective: Apply Kelvin's demo feedback within the existing scope and hard limits.
+  implements:
+  - M7
+  critical: false
+  inputs:
+    notes:
+      type: string
+      source: $node.approve_demo.notes
+  outputs:
+    summary:
+      type: string
+      required: true
+    files_touched:
+      type: list
+      required: true
+  contract:
+    preconditions:
+    - approve_demo exited rejected with notes
+    postconditions:
+    - Each requested change is applied or explained as out of scope
+    - No hard limit is crossed
+  context:
+    mode: flat
+    include:
+    - hef.constraints
+    - hef.architecture
+    - CLAUDE.md
+    - tasks/lessons.md
+    - docs/10-demo-script.md
+  reasoning:
+    mode: direct
+  budget:
+    max_input_tokens: 150000
+    max_output_tokens: 40000
+    max_calls: 80
+    max_wall_seconds: 7200
+  retry:
+    max: 1
+    mutate:
+    - add_feedback
+  exits:
+  - success
+  - fail
+  - needs_input
+  - budget_exceeded
+  - timeout
+  - blocked
+- id: done
+  kind: terminal
+  status: complete
+  objective: Write hef_state as complete, append the run's lessons to tasks/lessons.md and stop.
+  implements:
+  - T7.5
+- id: blocked
+  kind: terminal
+  status: blocked
+  objective: Write hef_state with the blocker and the exact question for Kelvin, append lessons, and stop.
+  implements:
+  - T7.5
+- id: aborted
+  kind: terminal
+  status: failed
+  objective: Write hef_state with the failure, the last node and its exit, append lessons, and stop.
+  implements:
+  - T7.5
+edges:
+- from: plan_build
+  to: verify_plan
+  when: success
+- from: verify_plan
+  to: approve_plan
+  when: success
+- from: verify_plan
+  to: plan_build
+  when: fail
+  carries:
+    feedback: $node.verify_plan.failures
+  loop: plan_revise
+- from: approve_plan
+  to: m1_scaffold
+  when: approved
+- from: approve_plan
+  to: plan_build
+  when: rejected
+  carries:
+    feedback: $node.approve_plan.notes
+  loop: plan_human_revise
+- from: approve_plan
+  to: blocked
+  when: timeout
+- from: m1_scaffold
+  to: m1_schema
+  when: success
+- from: m1_scaffold
+  to: blocked
+  when: needs_input
+- from: m1_scaffold
+  to: blocked
+  when: blocked
+- from: m1_schema
+  to: m1_seed
+  when: success
+- from: m1_schema
+  to: blocked
+  when: needs_input
+- from: m1_schema
+  to: blocked
+  when: blocked
+- from: m1_seed
+  to: verify_m1
+  when: success
+- from: m1_seed
+  to: blocked
+  when: needs_input
+- from: m1_seed
+  to: blocked
+  when: blocked
+- from: verify_m1
+  to: fix_m1
+  when: fail
+  carries:
+    failures: $node.verify_m1.failures
+- from: fix_m1
+  to: verify_m1
+  when: success
+  loop: fix_m1_loop
+- from: fix_m1
+  to: blocked
+  when: needs_input
+- from: fix_m1
+  to: blocked
+  when: blocked
+- from: verify_m1
+  to: blocked
+  when: needs_input
+- from: verify_m1
+  to: m2_policy
+  when: success
+- from: m2_policy
+  to: m2_ledger
+  when: success
+- from: m2_policy
+  to: blocked
+  when: needs_input
+- from: m2_policy
+  to: blocked
+  when: blocked
+- from: m2_ledger
+  to: verify_m2
+  when: success
+- from: m2_ledger
+  to: blocked
+  when: needs_input
+- from: m2_ledger
+  to: blocked
+  when: blocked
+- from: verify_m2
+  to: fix_m2
+  when: fail
+  carries:
+    failures: $node.verify_m2.failures
+- from: fix_m2
+  to: verify_m2
+  when: success
+  loop: fix_m2_loop
+- from: fix_m2
+  to: blocked
+  when: needs_input
+- from: fix_m2
+  to: blocked
+  when: blocked
+- from: verify_m2
+  to: blocked
+  when: needs_input
+- from: verify_m2
+  to: m3_agencies
+  when: success
+- from: m3_agencies
+  to: m3_broker
+  when: success
+- from: m3_agencies
+  to: blocked
+  when: needs_input
+- from: m3_agencies
+  to: blocked
+  when: blocked
+- from: m3_broker
+  to: m3_offline
+  when: success
+- from: m3_broker
+  to: blocked
+  when: needs_input
+- from: m3_broker
+  to: blocked
+  when: blocked
+- from: m3_offline
+  to: verify_m3
+  when: success
+- from: m3_offline
+  to: blocked
+  when: needs_input
+- from: m3_offline
+  to: blocked
+  when: blocked
+- from: verify_m3
+  to: fix_m3
+  when: fail
+  carries:
+    failures: $node.verify_m3.failures
+- from: fix_m3
+  to: verify_m3
+  when: success
+  loop: fix_m3_loop
+- from: fix_m3
+  to: blocked
+  when: needs_input
+- from: fix_m3
+  to: blocked
+  when: blocked
+- from: verify_m3
+  to: blocked
+  when: needs_input
+- from: verify_m3
+  to: m4_tickets
+  when: success
+- from: m4_tickets
+  to: m4_demerit
+  when: success
+- from: m4_tickets
+  to: blocked
+  when: needs_input
+- from: m4_tickets
+  to: blocked
+  when: blocked
+- from: m4_demerit
+  to: verify_m4
+  when: success
+- from: m4_demerit
+  to: blocked
+  when: needs_input
+- from: m4_demerit
+  to: blocked
+  when: blocked
+- from: verify_m4
+  to: fix_m4
+  when: fail
+  carries:
+    failures: $node.verify_m4.failures
+- from: fix_m4
+  to: verify_m4
+  when: success
+  loop: fix_m4_loop
+- from: fix_m4
+  to: blocked
+  when: needs_input
+- from: fix_m4
+  to: blocked
+  when: blocked
+- from: verify_m4
+  to: blocked
+  when: needs_input
+- from: verify_m4
+  to: m5_citizen
+  when: success
+- from: m5_citizen
+  to: m5_oversight
+  when: success
+- from: m5_citizen
+  to: blocked
+  when: needs_input
+- from: m5_citizen
+  to: blocked
+  when: blocked
+- from: m5_oversight
+  to: verify_m5
+  when: success
+- from: m5_oversight
+  to: blocked
+  when: needs_input
+- from: m5_oversight
+  to: blocked
+  when: blocked
+- from: verify_m5
+  to: fix_m5
+  when: fail
+  carries:
+    failures: $node.verify_m5.failures
+- from: fix_m5
+  to: verify_m5
+  when: success
+  loop: fix_m5_loop
+- from: fix_m5
+  to: blocked
+  when: needs_input
+- from: fix_m5
+  to: blocked
+  when: blocked
+- from: verify_m5
+  to: blocked
+  when: needs_input
+- from: verify_m5
+  to: m6_web
+  when: success
+- from: m6_web
+  to: verify_m6
+  when: success
+- from: m6_web
+  to: blocked
+  when: needs_input
+- from: m6_web
+  to: blocked
+  when: blocked
+- from: verify_m6
+  to: fix_m6
+  when: fail
+  carries:
+    failures: $node.verify_m6.failures
+- from: fix_m6
+  to: verify_m6
+  when: success
+  loop: fix_m6_loop
+- from: fix_m6
+  to: blocked
+  when: needs_input
+- from: fix_m6
+  to: blocked
+  when: blocked
+- from: verify_m6
+  to: blocked
+  when: needs_input
+- from: verify_m6
+  to: m7_security
+  when: success
+- from: m7_security
+  to: m7_demo
+  when: success
+- from: m7_security
+  to: blocked
+  when: needs_input
+- from: m7_security
+  to: blocked
+  when: blocked
+- from: m7_demo
+  to: verify_m7
+  when: success
+- from: m7_demo
+  to: blocked
+  when: needs_input
+- from: m7_demo
+  to: blocked
+  when: blocked
+- from: verify_m7
+  to: fix_m7
+  when: fail
+  carries:
+    failures: $node.verify_m7.failures
+- from: fix_m7
+  to: verify_m7
+  when: success
+  loop: fix_m7_loop
+- from: fix_m7
+  to: blocked
+  when: needs_input
+- from: fix_m7
+  to: blocked
+  when: blocked
+- from: verify_m7
+  to: blocked
+  when: needs_input
+- from: verify_m7
+  to: approve_demo
+  when: success
+- from: plan_build
+  to: blocked
+  when: needs_input
+- from: verify_plan
+  to: blocked
+  when: needs_input
+- from: approve_demo
+  to: done
+  when: approved
+- from: approve_demo
+  to: apply_demo_feedback
+  when: rejected
+  carries:
+    notes: $node.approve_demo.notes
+- from: approve_demo
+  to: blocked
+  when: timeout
+- from: apply_demo_feedback
+  to: verify_m7
+  when: success
+  loop: demo_feedback_loop
+- from: apply_demo_feedback
+  to: blocked
+  when: needs_input
+- from: apply_demo_feedback
+  to: blocked
+  when: blocked

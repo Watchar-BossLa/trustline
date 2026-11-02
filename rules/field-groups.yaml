@@ -1,0 +1,110 @@
+# Field groups — the unit of permission. Cedar decides per group (policies/trustline.cedar).
+# `domain` is the ministry or owner of the data; `calls` are the adapter calls the broker makes
+# only when the group is permitted; `fields` are the response fields the group may populate.
+version: 1.0.0
+groups:
+  identity_basic:
+    domain: licensing
+    calls: [licensing.getDriverByNic, licensing.getDriverByLicence]
+    fields: [full_name, photo_ref, date_of_birth, licence_no_masked]
+  licence_status:
+    domain: licensing
+    calls: [licensing.getDriverByNic, trustline.licenceActions]
+    fields: [status, classes, expiry_date, endorsements]
+  points_band:
+    domain: licensing
+    calls: [trustline.demeritLedger]
+    fields: [band]            # 0-4 | 5-9 | 10-13 | 14+
+  points_detail:
+    domain: licensing
+    calls: [trustline.demeritLedger]
+    fields: [points_in_force, convictions, proposed_actions, licence_actions]
+  vehicle_registration:
+    domain: licensing
+    calls: [licensing.getVehicleByPlate, licensing.getVehiclesByOwner]
+    fields: [plate, make, model, colour, year, registration_status, registration_expiry]
+  insurance_status:
+    domain: insurance
+    calls: [insurance.getPolicyByPlate]
+    fields: [insurance_status, insurance_expiry]
+  inspection_status:
+    domain: inspection
+    calls: [inspection.getByPlate]
+    fields: [inspection_status, inspection_expiry]
+  compliance_summary:
+    domain: tickets
+    calls: [trustline.tickets]
+    fields: [unpaid_tickets_count, unpaid_total_ecd, oldest_unpaid_days]
+  alerts_summary:
+    domain: police
+    calls: [police.flagsPerson, police.flagsVehicle]
+    fields: [warrant, stolen, hit_id, contact]
+  court_flag:
+    domain: courts
+    calls: [courts.pendingForPerson]
+    fields: [court_date_pending]
+  criminal_record:
+    domain: police
+    calls: [police.criminalRecord]
+    fields: [convictions, pending_charges]
+  vehicle_history:
+    domain: licensing
+    calls: [licensing.vehicleHistory]
+    fields: [ownership_history, registration_history]
+  accident_history:
+    domain: police
+    calls: [police.accidentsByPerson, police.accidentsByVehicle]
+    fields: [accidents]
+  insurance_detail:
+    domain: insurance
+    calls: [insurance.getPolicyByPlate]
+    fields: [insurer, policy_no_masked, cover_type, insurance_expiry]
+  inspection_history:
+    domain: inspection
+    calls: [inspection.history]
+    fields: [inspections]
+  court_timeline:
+    domain: courts
+    calls: [courts.case]
+    fields: [cases, next_hearing, outcomes]
+  ticket_detail:
+    domain: tickets
+    calls: [trustline.tickets]
+    fields: [tickets, payments]
+  emergency_card:
+    domain: health
+    calls: [health.emergencyCard]
+    fields: [blood_group, allergies, critical_conditions, emergency_contact]
+  health_record:
+    domain: health
+    calls: []
+    fields: []               # exists only so the policy can forbid it explicitly; never fetched
+  access_log_own:
+    domain: ledger
+    calls: [trustline.ledgerBySubject]
+    fields: [entries]
+  ledger_metadata:
+    domain: ledger
+    calls: [trustline.ledgerMetadata]
+    fields: [entries_without_subject_keys, checkpoints, alerts]
+  cross_domain_profile:
+    domain: none
+    calls: []
+    fields: []               # forbidden for every principal (HL1)
+
+# Which groups each request kind asks the policy about. The broker requests only these.
+request_kinds:
+  roadside_check: [identity_basic, licence_status, points_band, vehicle_registration, insurance_status,
+                   inspection_status, compliance_summary, alerts_summary, court_flag]
+  investigation_query: [identity_basic, licence_status, alerts_summary, criminal_record, vehicle_history,
+                        accident_history]
+  warrant_check: [identity_basic, alerts_summary]
+  crash_query: [identity_basic, licence_status, vehicle_registration, accident_history, insurance_detail,
+                inspection_history]
+  dispatch_hit: [identity_basic, alerts_summary]
+  ems_access: [identity_basic, emergency_card]
+  licensing_review: [identity_basic, licence_status, points_detail, ticket_detail, court_timeline]
+  court_ticket_read: [ticket_detail, court_timeline]
+  citizen_record: [identity_basic, licence_status, points_detail, vehicle_registration, insurance_status,
+                   inspection_status, compliance_summary, ticket_detail, court_timeline, access_log_own]
+  oversight_audit: [ledger_metadata]

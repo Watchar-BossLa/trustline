@@ -1,0 +1,488 @@
+# TRUSTLINE — canonical requirement registry
+# This file is the single source of truth for requirement, acceptance-criterion,
+# hard-limit, milestone, task and check ids. TRUSTLINE.hef.md (sections 3, 6, 7),
+# graphs/build.graph.yaml and prompts/nodes/*.md all reference these ids.
+# Edit here first, then run:  python3 tools/graph_lint.py && python3 tools/render_node_prompts.py
+
+meta:
+  name: TRUSTLINE
+  version: 1.0.0
+  date: 2026-11-02
+  owner: Kelvin Wilson Antoine — Limah Innovations, Corp.
+  status: ready
+  scope_note: >
+    This registry covers the software build that Claude Code executes: the Phase 0
+    pitch demo on a production-shaped architecture, ready to grow into the Phase 1 pilot.
+    Programme phases (0 to 3) are described in docs/01-product-brief.md; build milestones
+    are M1 to M7 below.
+
+requirements:
+  - id: R1
+    priority: must
+    milestone: M3
+    text: >
+      The system shall return a roadside status card for a NIC number, driver's licence
+      number or vehicle plate, containing only the field groups the policy engine permits
+      for the stated purpose, within 2 seconds at the 95th percentile on the reference
+      environment (docker compose on a 4-core, 8 GB machine).
+  - id: R2
+    priority: must
+    milestone: M2
+    text: >
+      The system shall require every data request to carry an authenticated actor, an
+      attested device (for officers), a reason code from rules/reason-codes.yaml and, where
+      that reason code requires it, a valid case, incident or warrant reference; any request
+      failing a check shall be denied by default.
+  - id: R3
+    priority: must
+    milestone: M2
+    text: >
+      The system shall decide access per field group with the Cedar policies in
+      policies/trustline.cedar, including forbid rules that make health data unreachable by
+      every police role under every purpose.
+  - id: R4
+    priority: must
+    milestone: M3
+    text: >
+      The system shall not store agency master records (licences, vehicles, criminal,
+      court or health records); it shall fetch them at query time through adapter interfaces
+      modelled on X-Road service calls, and shall persist only tickets, the demerit ledger,
+      licence actions, access logs, alerts, consents and disputes.
+  - id: R5
+    priority: must
+    milestone: M2
+    text: >
+      The system shall append every request decision (allow, partial, deny, error or rate_limited) to an
+      append-only ledger in which each entry is hash-chained to its predecessor, signed with
+      Ed25519 and covered by periodic signed Merkle checkpoints; tampering with any entry
+      shall be detectable by an offline verification command.
+  - id: R6
+    priority: must
+    milestone: M5
+    text: >
+      The system shall show each signed-in citizen every access to their data, with time,
+      agency, officer badge number, reason code and case reference, except entries under an
+      approved, time-limited disclosure deferral, which shall appear automatically when the
+      deferral expires.
+  - id: R7
+    priority: must
+    milestone: M4
+    text: >
+      The system shall issue electronic tickets under the Motor Vehicles and Road Traffic
+      (Ticketable Offences) Regulations, track payment and court referral, and expose ticket
+      status to the court and Licensing Authority.
+  - id: R8
+    priority: must
+    milestone: M4
+    text: >
+      The system shall record demerit points on conviction from the versioned schedule in
+      rules/demerit-schedule.yaml, evaluate the section 179 thresholds, and produce proposed
+      licence actions that take effect only after an authorised Licensing Authority officer
+      records a decision.
+  - id: R9
+    priority: must
+    milestone: M3
+    text: >
+      The system shall mark every warrant or stolen-vehicle match as UNCONFIRMED until a
+      dispatcher confirms or clears it against the source agency, and shall log both the
+      match and the decision.
+  - id: R10
+    priority: must
+    milestone: M5
+    text: >
+      The system shall evaluate the rules in rules/anomaly-rules.yaml over the access ledger,
+      raise alerts in the oversight console, and produce a monthly aggregate transparency
+      report that includes the ledger checkpoint roots.
+  - id: R11
+    priority: must
+    milestone: M3
+    text: >
+      The system shall expose no endpoint, query, report or export that returns a person's
+      data combined across ministries, no bulk export, and shall rate-limit identifier
+      lookups per officer and per device.
+  - id: R12
+    priority: must
+    milestone: M1
+    text: >
+      The system shall authenticate officers per device (signed development tokens behind a
+      DEV_AUTH flag in the demo build; WebAuthn passkeys with device attestation from the
+      pilot), encrypt every network hop with TLS outside localhost, keep secrets out of the
+      repository, store personal identifiers only as keyed hashes or envelope-encrypted
+      values, and pass the security gates in docs/08-verification-plan.md.
+  - id: R13
+    priority: should
+    milestone: M4
+    text: >
+      The system shall flag a driver whose court fine remains unpaid 30 days after all
+      proceedings end, generate a section 107 disqualification notice for the Licensing
+      Authority, and clear the disqualification when the Clerk of Court confirms payment.
+  - id: R14
+    priority: should
+    milestone: M3
+    text: >
+      The system shall produce a signed, encrypted, expiring offline bundle of suspension,
+      stolen-vehicle and warrant flags keyed by keyed hashes; clients shall verify it before
+      use and queue offline checks for later sync and ledger entry.
+  - id: R15
+    priority: should
+    milestone: M5
+    text: >
+      The system shall let an EMS responder with an active incident open the emergency card
+      of a citizen who has opted in, record each opening in that citizen's access log, and
+      leave the card's content at the Ministry of Health adapter.
+  - id: R16
+    priority: should
+    milestone: M5
+    text: >
+      The system shall let citizens view their own licence, vehicle, ticket, points and
+      court-date record, pay (simulated) or contest a ticket, manage emergency-card consent,
+      and file a dispute against any access-log entry.
+  - id: R17
+    priority: must
+    milestone: M6
+    text: >
+      The system shall provide web interfaces for officers (installable PWA with QR scan of
+      synthetic demo cards and manual entry), dispatch, the Licensing Authority, citizens, EMS
+      and oversight, usable at 360 px width, with SYNTHETIC and pending-legal-verification
+      banners on every screen.
+  - id: R18
+    priority: should
+    milestone: M4
+    text: >
+      The system shall show court dates and outcomes for driving matters to authorised roles
+      and to the citizen concerned, read through the courts adapter.
+  - id: R19
+    priority: could
+    milestone: deferred
+    text: >
+      The system shall verify ISO/IEC 18013-5 mobile driving licences presented by drivers.
+      Not built in M1–M7; the offline crate must not preclude it.
+  - id: R20
+    priority: could
+    milestone: deferred
+    text: >
+      The system shall produce de-identified road-safety analytics (crash hotspots, offence
+      trends, repeat-offender rates). Not built in M1–M7.
+
+acceptance_criteria:
+  - id: AC1
+    verifies: [R1]
+    text: >
+      Given persona S2 (suspended licence), when OFF-101 posts a roadside check with reason
+      TS, the response contains exactly the TS field groups listed in docs/05 and
+      licence.status = SUSPENDED; p95 latency over 200 checks in compose is under 2 s.
+  - id: AC2
+    verifies: [R2]
+    text: >
+      A roadside check without a reason code, with an unknown reason code, or from an
+      unattested device returns 403 problem+json and writes a ledger entry with decision deny.
+  - id: AC3
+    verifies: [R3]
+    text: >
+      The exhaustive policy matrix (every role × every reason code × every field group,
+      with each boolean context flag both ways) contains no permit of a health-domain field
+      group to any police role, and matches the expected-permissions table in docs/05.
+  - id: AC4
+    verifies: [R2, R3]
+    text: >
+      An investigator query for criminal_record without a case reference is denied; with a
+      valid open case reference it is allowed and the ledger entry carries the case reference.
+  - id: AC5
+    verifies: [R5]
+    text: >
+      `trustline-cli ledger verify` passes on an untouched ledger and, after any single entry
+      is modified, deleted or reordered (via superuser in a test), fails and names the first
+      bad sequence number; UPDATE and DELETE by the application role are rejected.
+  - id: AC6
+    verifies: [R5]
+    text: >
+      In the end-to-end suite, the number of ledger entries equals the number of
+      ledger-scoped API requests (x-ledger: true) plus the number of synced offline checks
+      (x-ledger: per_item), across allow, partial, deny, error and rate_limited.
+  - id: AC7
+    verifies: [R6]
+    text: >
+      Persona S8 sees each access to their data within 60 s, with time, agency, badge,
+      reason code and case reference; an entry under an approved deferral is hidden until
+      expiry and then appears; creating a deferral without supervisor approval fails, and
+      every deferral is visible in oversight.
+  - id: AC8
+    verifies: [R7, R8]
+    text: >
+      Paying a ticket for an offence mapped to Schedule 2 paragraph 2(e) (exceeding the speed
+      limit by 20 mph or more) records the number of points set in rules/demerit-schedule.yaml,
+      dated the conviction date, with the ticket linked.
+  - id: AC9
+    verifies: [R8]
+    text: >
+      Demerit engine tests pass for every row of the section 179 test table in docs/08:
+      recording on conviction, appeal suspension and reinstatement, same-incident rule,
+      3-year expiry, 11–13 notice, 14–17 interview, ≥10 in 1 year 6-month suspension,
+      ≥18 over 1–2 years 1-year suspension, clearance after a suspension of 3+ months,
+      and concurrent suspensions.
+  - id: AC10
+    verifies: [R8]
+    text: >
+      No licence action becomes effective without a decision event by a licensing_officer;
+      after confirmation, the roadside card for that driver shows SUSPENDED within 60 s.
+  - id: AC11
+    verifies: [R9]
+    text: >
+      A stolen-vehicle or warrant match is returned as UNCONFIRMED_MATCH; only a dispatcher
+      decision changes it to CONFIRMED or CLEARED; the match and the decision are separate
+      ledger entries.
+  - id: AC12
+    verifies: [R10]
+    text: >
+      The seeded misuse scenario (OFF-102 checks persona S8 five times in 24 h with no
+      ticket, incident or case) raises a repeat_subject alert visible in the oversight
+      console; the monthly report contains counts by agency, reason and decision and the
+      checkpoint roots for the period.
+  - id: AC13
+    verifies: [R11]
+    text: >
+      A contract test over api/openapi.yaml confirms no response schema combines more than
+      one ministry domain outside the purpose-bound status card and investigation result;
+      exceeding the per-officer lookup limit returns 429 and is logged.
+  - id: AC14
+    verifies: [R13]
+    text: >
+      For persona S10, a fine unpaid 30 days after proceedings end produces a pending
+      disqualify_unpaid_fine proposed action; recording court-confirmed payment ends the
+      disqualification.
+  - id: AC15
+    verifies: [R14]
+    text: >
+      A freshly issued offline bundle verifies; a bundle with any byte altered, signed by an
+      unknown key, or past its expiry is rejected; synced offline checks create ledger
+      entries flagged offline = true.
+  - id: AC16
+    verifies: [R15]
+    text: >
+      EMS-601 with an active incident opens persona S9's emergency card; the opening
+      appears in S9's access log; the same request by any police role is denied.
+  - id: AC17
+    verifies: [R17]
+    text: >
+      From a fresh clone, `make demo` brings the system up with seeded data in under
+      10 minutes and the Playwright demo-flow test (docs/10 steps 1–8) passes.
+  - id: AC18
+    verifies: [R12]
+    text: >
+      cargo fmt, clippy (-D warnings), tests, cargo-deny, gitleaks, the web lint, typecheck
+      and audit all pass in CI; no secret is present in the git history; DEV_AUTH cannot be
+      enabled when TRUSTLINE_ENV=production.
+  - id: AC19
+    verifies: [R4]
+    text: >
+      A schema test confirms no table holds agency master records; with a mock agency
+      stopped, the status card returns its fields as UNKNOWN with source status timeout or
+      error, never stale data.
+  - id: AC20
+    verifies: [R16]
+    text: >
+      Persona S2 sees their own tickets, points, licence and vehicle status; filing a dispute
+      creates an item in the oversight queue linked to the ledger entry.
+  - id: AC21
+    verifies: [R18]
+    text: >
+      A licensing_officer and the citizen concerned see the next court date for a referred
+      ticket; a traffic officer at a stop sees only court_date_pending = true.
+  - id: AC22
+    verifies: [R17]
+    text: >
+      Officer and citizen screens pass automated axe accessibility checks with no serious or
+      critical violations, and the officer status card renders in under 3 s under Playwright
+      3G throttling.
+
+hard_limits:
+  - id: HL1
+    text: Never build an endpoint, query, report or export that returns a person's data combined across ministries.
+  - id: HL2
+    text: Never allow a police role to read health data. Health content leaves the Ministry of Health adapter only as the opted-in emergency card to an EMS responder with an active incident.
+  - id: HL3
+    text: Never store agency master records in TRUSTLINE's database; cache only what the offline-bundle spec allows.
+  - id: HL4
+    text: Never write raw NIC, licence or plate numbers to the access ledger or application logs; use keyed hashes (HMAC-SHA-256 with a managed pepper).
+  - id: HL5
+    text: Never let software alone suspend or disqualify a driver; every licence action needs a recorded decision by an authorised Licensing Authority officer.
+  - id: HL6
+    text: Never use real personal data in development, tests or demos; synthetic data only, marked SYNTHETIC on every screen.
+  - id: HL7
+    text: Never implement facial recognition, appearance-based profiling, predictive risk scores or automatic plate-recognition ticketing.
+  - id: HL8
+    text: Never update or delete ledger rows; corrections are new entries.
+  - id: HL9
+    text: Never commit secrets, keys or tokens, and never disable TLS verification.
+  - id: HL10
+    text: Never model vendor revenue on fines collected.
+  - id: HL11
+    text: Never treat values in rules/demerit-schedule.yaml, rules/offences.yaml or rules/retention.yaml as legally verified while verified is false; show the pending-legal-verification banner.
+  - id: HL12
+    text: Never deploy this build with real data or to third-party hosting; production hosting is the Government of Saint Lucia data centre and is out of scope.
+
+milestones:
+  - id: M1
+    name: Foundation
+    objective: A compiling Rust workspace, database, CI, configuration and synthetic data that every later milestone builds on.
+    tasks:
+      - id: T1.1
+        text: Create the Cargo workspace (edition 2024) with crates core, policy, ledger, broker, adapters, demerit, tickets, oversight, offline, api, cli and the services/mock-agencies binary, each compiling with a placeholder test.
+      - id: T1.2
+        text: Add docker-compose.yml (Postgres 16, api, mock-agencies, web) and a Makefile with targets setup, keys, db, seed, run, test, verify and demo.
+      - id: T1.3
+        text: Add GitHub Actions CI running fmt, clippy -D warnings, tests, cargo-deny, gitleaks, migration check, Cedar validation, OpenAPI lint and web lint, typecheck and tests.
+      - id: T1.4
+        text: Add typed configuration (.env.example, no secrets), tracing with request ids, the problem+json error model from api/openapi.yaml, and the DEV_AUTH token issuer for synthetic personas that refuses to start when TRUSTLINE_ENV=production.
+      - id: T1.5
+        text: Turn db/schema.sql into sqlx migrations, create the database roles and append-only triggers, and add a schema test proving no agency master-record tables exist.
+      - id: T1.6
+        text: Implement the deterministic synthetic data generator in trustline-cli per docs/09-synthetic-data.md for TRUSTLINE tables and mock-agency fixtures.
+    checks:
+      - id: V1.1
+        text: make verify passes on a clean clone.
+      - id: V1.2
+        text: make db applies all migrations to an empty database; UPDATE or DELETE on ledger.access_event by the app role fails.
+      - id: V1.3
+        text: make seed produces the personas and counts in docs/09; the same seed produces byte-identical fixtures.
+    deliverables: Cargo workspace, docker-compose.yml, Makefile, CI workflow, migrations, config, seeder.
+
+  - id: M2
+    name: Policy and ledger
+    objective: Every request is decided by Cedar policy and recorded in a tamper-evident ledger.
+    tasks:
+      - id: T2.1
+        text: Implement trustline-policy to load and validate policies/trustline.cedar against policies/trustline.cedarschema at startup and expose decide() and policy_version().
+      - id: T2.2
+        text: Generate the exhaustive role × reason × field-group × context matrix test and assert it against the expected-permissions table in docs/05-access-policy.md.
+      - id: T2.3
+        text: Implement trustline-ledger with RFC 8785 canonical JSON, SHA-256 hash chaining, Ed25519 signatures with key ids, and Merkle checkpoints every N entries or T minutes.
+      - id: T2.4
+        text: Add trustline-cli ledger verify (against the database or an export file) and API middleware that writes exactly one ledger entry per ledger-scoped request, including denials and errors.
+    checks:
+      - id: V2.1
+        text: Policy matrix test passes; any permit of a health field group to a police role fails the build.
+      - id: V2.2
+        text: Ledger tamper tests pass for modify, delete and reorder.
+      - id: V2.3
+        text: Integration tests show one ledger entry per ledger-scoped request.
+    deliverables: trustline-policy, trustline-ledger, ledger middleware, ledger verify command.
+
+  - id: M3
+    name: Agencies, broker and roadside check
+    objective: A purpose-bound roadside check that fetches only permitted fields from mock agencies, with hit confirmation, rate limits and offline bundles.
+    tasks:
+      - id: T3.1
+        text: Build services/mock-agencies serving synthetic licensing, vehicle, police, courts, insurance, inspection, health-emergency and NAF-style OIDC endpoints per the adapter contracts in docs/02, with latency and failure injection.
+      - id: T3.2
+        text: Implement trustline-adapters with one adapter per agency behind an AgencyAdapter trait, X-Road-shaped request headers and per-call timeouts.
+      - id: T3.3
+        text: Implement trustline-broker to resolve identifiers to subject keys, ask the policy engine for permitted field groups, fan out only permitted calls in parallel, assemble the status card and mark failed sources UNKNOWN.
+      - id: T3.4
+        text: Implement hit confirmation and the endpoints POST /v1/roadside/checks, POST /v1/hits/{hitId}/decision and POST /v1/investigations/queries.
+      - id: T3.5
+        text: Add per-officer and per-device rate limits and a contract test proving no endpoint returns a cross-domain profile.
+      - id: T3.6
+        text: Implement trustline-offline (UniFFI-ready, no async runtime) to build, sign, encrypt and verify expiring bundles, with GET /v1/offline/bundle and POST /v1/offline/sync.
+    checks:
+      - id: V3.1
+        text: Roadside integration tests for personas S1 to S5 return the expected cards; p95 under 2 s over 200 checks.
+      - id: V3.2
+        text: With any mock agency stopped, its fields show UNKNOWN and the card still returns.
+      - id: V3.3
+        text: Offline bundle tamper and expiry tests pass; rate-limit test returns 429 and is logged.
+    deliverables: mock-agencies service, adapters, broker, roadside, hit and investigation endpoints, offline bundle.
+
+  - id: M4
+    name: Tickets and demerit points
+    objective: Tickets flow to payment or court, convictions record points, and section 179 and 107 actions are proposed for human decision.
+    tasks:
+      - id: T4.1
+        text: Implement ticket issuance from rules/offences.yaml with ticket numbering, encrypted identifiers and the ticket endpoints.
+      - id: T4.2
+        text: Implement simulated online payment, court-confirmed payment, court referral and court outcome endpoints.
+      - id: T4.3
+        text: Implement section 107 unpaid-fine detection and the court timeline endpoint for authorised roles.
+      - id: T4.4
+        text: Implement trustline-demerit as pure functions over conviction history and the versioned schedule, covering recording, appeals, the same-incident rule, expiry and all thresholds.
+      - id: T4.5
+        text: Implement proposed actions, the Licensing Authority decision endpoints, licence-action effects on the roadside card and appeal deadlines.
+      - id: T4.6
+        text: Write table tests mirroring every section 179 subsection and property-based tests for the demerit engine.
+    checks:
+      - id: V4.1
+        text: Demerit tests cover every row of the docs/08 section 179 table.
+      - id: V4.2
+        text: Persona S6 flow passes end to end, ticket to SUSPENDED card after officer confirmation.
+      - id: V4.3
+        text: Persona S10 unpaid-fine flow passes.
+    deliverables: tickets crate and endpoints, demerit engine, proposed actions and licensing endpoints, court endpoints.
+
+  - id: M5
+    name: Citizen record and oversight
+    objective: Citizens see their record and every access to it; oversight sees anomalies, deferrals and monthly reports.
+    tasks:
+      - id: T5.1
+        text: Implement the citizen API (/v1/me/record, /v1/me/access-log, disputes, ticket payment) keyed by the citizen's subject hash.
+      - id: T5.2
+        text: Implement disclosure deferrals with supervisor approval, a configured maximum duration, oversight visibility and automatic release.
+      - id: T5.3
+        text: Implement emergency-card consent and EMS access with the incident check, the Ministry of Health adapter call and the citizen log entry.
+      - id: T5.4
+        text: Implement trustline-oversight to evaluate rules/anomaly-rules.yaml on new ledger entries and on schedule, with the alerts API and review workflow.
+      - id: T5.5
+        text: Implement the monthly transparency report and the ledger verification status endpoint.
+    checks:
+      - id: V5.1
+        text: The persona S8 misuse scenario raises the expected alert.
+      - id: V5.2
+        text: The deferral lifecycle test passes.
+      - id: V5.3
+        text: The EMS flow passes and every police role is denied the emergency card.
+    deliverables: citizen endpoints, deferrals, emergency card, oversight engine, alerts, reports.
+
+  - id: M6
+    name: Web applications
+    objective: Usable screens for every role, ready for the pitch demo.
+    tasks:
+      - id: T6.1
+        text: Create the Next.js app (App Router, TypeScript strict, Tailwind) with route groups /officer, /dispatch, /licensing, /citizen, /ems and /oversight, and a persona switcher shown only when DEV_AUTH is on.
+      - id: T6.2
+        text: Build the officer PWA with QR scan of synthetic demo cards, manual entry, reason-code picker, status card, ticket issue, offline indicator and driver receipt QR.
+      - id: T6.3
+        text: Build the citizen portal with My Record, access log and deferral notice, disputes, emergency-card consent and simulated payment.
+      - id: T6.4
+        text: Build the licensing console (proposed-action queue and decisions) and the dispatch console (hit decisions).
+      - id: T6.5
+        text: Build the oversight console (alerts, deferrals, ledger status, monthly report) and the SYNTHETIC and pending-legal-verification banners on every screen.
+    checks:
+      - id: V6.1
+        text: The Playwright demo-flow test passes.
+      - id: V6.2
+        text: axe checks pass with no serious or critical violations on officer and citizen screens.
+      - id: V6.3
+        text: The officer status card renders in under 3 s under 3G throttling.
+    deliverables: apps/web with all role screens and Playwright tests.
+
+  - id: M7
+    name: Hardening and demo readiness
+    objective: Security gates green, threat model addressed, demo reproducible from a fresh clone.
+    tasks:
+      - id: T7.1
+        text: Work through the threat-model checklist in docs/06, fix gaps, and record a security-reviewer subagent review.
+      - id: T7.2
+        text: Run cargo-deny, gitleaks, the web dependency audit and an OWASP ZAP baseline scan against compose, and fix findings rated medium or above.
+      - id: T7.3
+        text: Load test the roadside endpoint and record results in docs/08.
+      - id: T7.4
+        text: Run docs/10-demo-script.md end to end from a fresh clone with make demo and remove friction.
+      - id: T7.5
+        text: Update README, the CLAUDE.md Current State, the tasks/todo.md review section and hef_state.
+    checks:
+      - id: V7.1
+        text: All quality gates are green in CI.
+      - id: V7.2
+        text: Every threat in docs/06 has a status of mitigated, accepted with reason, or deferred to pilot.
+      - id: V7.3
+        text: The demo script completes with under 10 minutes of setup from a fresh clone.
+    deliverables: hardened build, security review record, load-test results, demo-ready repo.

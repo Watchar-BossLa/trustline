@@ -1,0 +1,28 @@
+# Offence catalogue for e-tickets. Loaded into tickets.offence.
+#
+# LEGAL STATUS: NOT VERIFIED. Fixed penalties come from the Motor Vehicles and Road Traffic
+# (Ticketable Offences) Regulations (S.I. 20/2006, amended by S.I. 21/2015 and 46/2015), whose
+# schedule could not be read online on 2 Nov 2026. Penalties are therefore null and `ticketable`
+# is an assumption. Counsel or the Division of Transport must supply the schedule before the pilot.
+# The demo uses DEMO_PENALTY_ECD values, clearly labelled as illustrative in the UI.
+version: 1.0.0
+verified: false
+demo_penalties_are_illustrative: true
+offences:
+  - { code: SPEED-20, description: Exceeding the speed limit by 20 mph or more, demerit_paragraph: "2(e)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 500 }
+  - { code: SPEED-10, description: Exceeding the speed limit by 10 mph or more, demerit_paragraph: "3(a)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 300 }
+  - { code: SPEED-05, description: Exceeding the speed limit by 5 mph or more, demerit_paragraph: "4(b)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 150 }
+  - { code: STOP-SIGN, description: Failing to obey a stop sign, demerit_paragraph: "2(b)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 250 }
+  - { code: LIGHT-SIGNAL, description: Failing to obey a light signal, demerit_paragraph: "3(c)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 250 }
+  - { code: NO-SIGNAL, description: Not making an appropriate signal, demerit_paragraph: "4(a)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 100 }
+  - { code: OVERTAKE, description: Overtaking improperly, demerit_paragraph: "3(e)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 200 }
+  - { code: OBSTRUCTION, description: Causing unnecessary obstruction, demerit_paragraph: "4(d)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 100 }
+  - { code: PARK-RESTRICTED, description: Parking in a restricted place, demerit_paragraph: "4(e)", ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 75 }
+  - { code: NO-STICKER, description: Failing to display the registration and licensing sticker, act_section: "63A", demerit_paragraph: null, ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 100 }
+  - { code: UNREGISTERED, description: Using an unregistered vehicle, act_section: "61", demerit_paragraph: null, ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 300 }
+  - { code: UNROADWORTHY, description: Operating a motor vehicle in an unroadworthy condition, act_section: "63", demerit_paragraph: null, ticketable: true, fixed_penalty_ecd: null, demo_penalty_ecd: 300 }
+  # Court-only in this build (no ticket; recorded through court outcomes):
+  - { code: DANGEROUS, description: Dangerous driving, demerit_paragraph: "2(d)", ticketable: false, fixed_penalty_ecd: null, demo_penalty_ecd: null }
+  - { code: NO-STOP-ACCIDENT, description: Not stopping after an accident, demerit_paragraph: "1(b)", ticketable: false, fixed_penalty_ecd: null, demo_penalty_ecd: null }
+  - { code: NO-REPORT-INJURY, description: Not reporting an accident involving injury, demerit_paragraph: "1(a)", ticketable: false, fixed_penalty_ecd: null, demo_penalty_ecd: null }
+  - { code: DUE-CARE, description: Driving without due care, demerit_paragraph: "2(a)", ticketable: false, fixed_penalty_ecd: null, demo_penalty_ecd: null }

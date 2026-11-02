@@ -1,0 +1,56 @@
+// TRUSTLINE Cedar schema (human-readable format). Validate:
+//   cedar validate --schema policies/trustline.cedarschema --policies policies/trustline.cedar
+namespace Trustline {
+  // Context passed with every field-group decision. The API computes these flags before
+  // evaluation: reference validity is checked at the source agency; device_attested comes from
+  // device enrolment; emergency_consent from ems.emergency_card_consent; is_self compares the
+  // citizen's subject key with the requested subject.
+  type FieldContext = {
+    purpose: String,
+    device_attested: Bool,
+    case_ref_valid: Bool,
+    warrant_ref_valid: Bool,
+    incident_active: Bool,
+    emergency_consent: Bool,
+    is_self: Bool
+  };
+
+  type OpContext = {
+    purpose: String,
+    device_attested: Bool
+  };
+
+  entity Officer = {
+    roles: Set<String>,
+    agency: String,
+    unit: String,
+    badge: String
+  };
+  entity Citizen;
+  entity Service = {
+    roles: Set<String>
+  };
+  entity FieldGroup = {
+    domain: String
+  };
+  entity Capability;
+
+  action ReadFieldGroup appliesTo {
+    principal: [Officer, Citizen, Service],
+    resource: [FieldGroup],
+    context: FieldContext
+  };
+
+  action IssueTicket, ConfirmHit, DecideLicenceAction, RequestDeferral, ApproveDeferral,
+         AcknowledgeDeferral, ReviewAlert appliesTo {
+    principal: [Officer],
+    resource: [Capability],
+    context: OpContext
+  };
+
+  action RecordCourtOutcome, RecordPayment appliesTo {
+    principal: [Service],
+    resource: [Capability],
+    context: OpContext
+  };
+}

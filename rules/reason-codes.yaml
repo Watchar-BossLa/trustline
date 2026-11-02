@@ -1,0 +1,51 @@
+# Reason codes (purposes). Every request carries exactly one. Loaded into core.reason_code.
+# `requires` is checked by the API before policy evaluation; the reference is validated against
+# the source agency (mock: GET /police/v1/cases|incidents|warrants/{ref}) and the result is passed
+# to Cedar as context.case_ref_valid / incident_active / warrant_ref_valid.
+version: 1.0.0
+verified: false   # purposes and wording to be agreed with RSLPF, Transport and the Commissioner
+codes:
+  - code: TS
+    description: Traffic stop
+    requires: none
+    typical_roles: [traffic_officer, patrol_officer, supervisor]
+  - code: CP
+    description: Checkpoint or roadblock
+    requires: none
+    typical_roles: [traffic_officer, patrol_officer, supervisor]
+  - code: CRASH
+    description: Collision investigation
+    requires: incident_ref
+    typical_roles: [crash_investigator]
+  - code: INV
+    description: Criminal investigation
+    requires: case_ref
+    typical_roles: [investigator]
+  - code: WAR
+    description: Warrant execution
+    requires: warrant_ref
+    typical_roles: [investigator]
+  - code: DSP
+    description: Dispatch confirmation of a warrant or stolen-vehicle match
+    requires: none
+    typical_roles: [dispatcher]
+  - code: EMS
+    description: Emergency medical response at an active incident
+    requires: incident_ref
+    typical_roles: [ems_responder]
+  - code: LIC
+    description: Licensing administration (points, notices, licence actions)
+    requires: none
+    typical_roles: [licensing_officer]
+  - code: CRT
+    description: Court proceedings (tickets, payments, outcomes)
+    requires: none
+    typical_roles: [court_system]
+  - code: CIT
+    description: Citizen viewing their own record
+    requires: none
+    typical_roles: [citizen]
+  - code: AUD
+    description: Oversight audit of access logs
+    requires: none
+    typical_roles: [oversight_analyst]
