@@ -267,7 +267,7 @@ CREATE TABLE ledger.disclosure_deferral (
   CHECK (expires_at <= coverage_from + interval '365 days' OR magistrate_order_ref IS NOT NULL),
   CHECK (chain_created_at <= created_at),
   CHECK (renews IS NOT NULL OR chain_created_at = created_at),
-  CHECK (coverage_from >= chain_created_at - interval '72 hours'),
+  CHECK (coverage_from > chain_created_at - interval '72 hours'),   -- strict: an entry exactly 72 h old is already visible
   CHECK (renews IS DISTINCT FROM id)
 );
 CREATE INDEX deferral_subject_idx ON ledger.disclosure_deferral(subject_key, status);
@@ -290,7 +290,7 @@ BEGIN
     END IF;
   ELSIF NEW.scope = 'entry' THEN
     SELECT occurred_at INTO ev_time FROM ledger.access_event WHERE seq = NEW.event_seq;
-    IF NEW.created_at > ev_time + interval '72 hours' OR NEW.coverage_from <> ev_time THEN
+    IF NEW.created_at >= ev_time + interval '72 hours' OR NEW.coverage_from <> ev_time THEN
       RAISE EXCEPTION 'an entry deferral must be requested while the entry is still withheld';
     END IF;
   END IF;
@@ -300,6 +300,32 @@ $$;
 CREATE TRIGGER disclosure_deferral_insert_check
   BEFORE INSERT ON ledger.disclosure_deferral
   FOR EACH ROW EXECUTE FUNCTION ledger.check_deferral_insert();
+
+-- Release ends the whole renewal chain at once. A renewal overlaps the approval it continues, so
+-- without this an earlier, still-unexpired approval would keep withholding after the release, and
+-- a pending renewal would keep withholding until it lapsed. Active links are released with the
+-- same time, officer and reason; pending links are rejected. A released chain cannot be renewed,
+-- because a renewal must continue an active deferral.
+CREATE FUNCTION ledger.release_deferral_chain() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE ledger.disclosure_deferral d
+     SET status = CASE WHEN d.status = 'active' THEN 'released'::ledger.deferral_status
+                       ELSE 'rejected'::ledger.deferral_status END,
+         released_at = CASE WHEN d.status = 'active' THEN NEW.released_at END,
+         released_by = CASE WHEN d.status = 'active' THEN NEW.released_by END,
+         release_reason = CASE WHEN d.status = 'active' THEN NEW.release_reason END
+   WHERE d.id <> NEW.id AND d.status IN ('active', 'pending_approval')
+     AND d.subject_key = NEW.subject_key AND d.case_ref = NEW.case_ref AND d.scope = NEW.scope
+     AND d.coverage_from = NEW.coverage_from AND d.chain_created_at = NEW.chain_created_at
+     AND d.event_seq IS NOT DISTINCT FROM NEW.event_seq;
+  RETURN NULL;
+END
+$$;
+CREATE TRIGGER disclosure_deferral_release_chain
+  AFTER UPDATE OF status ON ledger.disclosure_deferral
+  FOR EACH ROW WHEN (NEW.status = 'released' AND OLD.status IS DISTINCT FROM 'released')
+  EXECUTE FUNCTION ledger.release_deferral_chain();
 
 -- Append-only guard: rejects UPDATE/DELETE on ledger tables for every role, owner included.
 CREATE FUNCTION ledger.reject_mutation() RETURNS trigger
@@ -543,7 +569,7 @@ LANGUAGE sql STABLE AS $$
     e.offline,
     (SELECT max(least(coalesce(c.released_at, c.expires_at), c.expires_at))
        FROM covering c
-      WHERE c.event_seq = e.seq AND c.status IN ('active', 'released'))
+      WHERE c.event_seq = e.seq AND c.created_at <= p_now AND c.status IN ('active', 'released'))
   FROM ledger.access_event e
   JOIN mine m ON m.event_seq = e.seq
   LEFT JOIN LATERAL (

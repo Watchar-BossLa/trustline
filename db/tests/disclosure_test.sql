@@ -189,6 +189,47 @@ VALUES ('00000000-0000-0000-0000-0000000000d4', 'case', '\x0e', 'SYN-CASE-2026-0
 UPDATE ledger.disclosure_deferral SET status = 'rejected', decided_at = '2026-11-21 09:00Z' WHERE id = '00000000-0000-0000-0000-0000000000d4';
 SELECT test.check(test.seqs('\x0e', '2026-11-23 12:30Z') = '{21}', 'DF24 rejected request stops withholding once the hold ends');
 
+-- Release ends the whole chain: an overlapping earlier approval and a pending renewal stop withholding too.
+SELECT test.ev(30, '2026-12-01 12:00Z', 'INV-301', 'INV', 'SYN-CASE-2026-0006', 'investigation_query', '{\\x10}', '{primary}');
+INSERT INTO ledger.disclosure_deferral (id, scope, subject_key, case_ref, coverage_from, chain_created_at, reason, requested_by,
+  created_at, lapses_at, expires_at, renews, status, approved_by, approved_at, decided_at) VALUES
+  ('00000000-0000-0000-0000-0000000000a1', 'case', '\x10', 'SYN-CASE-2026-0006', '2026-12-01 12:00Z', '2026-12-01 13:00Z',
+   'Overlap synthetic case first approval', '00000000-0000-0000-0000-000000000301', '2026-12-01 13:00Z', '2026-12-04 13:00Z',
+   '2027-03-01 13:00Z', NULL, 'active', '00000000-0000-0000-0000-000000000401', '2026-12-01 14:00Z', '2026-12-01 14:00Z');
+INSERT INTO ledger.disclosure_deferral (id, scope, subject_key, case_ref, coverage_from, chain_created_at, reason, requested_by,
+  created_at, lapses_at, expires_at, renews, status, approved_by, approved_at, decided_at) VALUES
+  ('00000000-0000-0000-0000-0000000000a2', 'case', '\x10', 'SYN-CASE-2026-0006', '2026-12-01 12:00Z', '2026-12-01 13:00Z',
+   'Overlap synthetic case early renewal', '00000000-0000-0000-0000-000000000301', '2026-12-02 13:00Z', '2026-12-05 13:00Z',
+   '2027-03-02 13:00Z', '00000000-0000-0000-0000-0000000000a1', 'active', '00000000-0000-0000-0000-000000000401',
+   '2026-12-02 14:00Z', '2026-12-02 14:00Z');
+INSERT INTO ledger.disclosure_deferral (id, scope, subject_key, case_ref, coverage_from, chain_created_at, reason, requested_by,
+  created_at, lapses_at, expires_at, renews) VALUES
+  ('00000000-0000-0000-0000-0000000000a3', 'case', '\x10', 'SYN-CASE-2026-0006', '2026-12-01 12:00Z', '2026-12-01 13:00Z',
+   'Overlap synthetic case pending renewal', '00000000-0000-0000-0000-000000000301', '2026-12-03 13:00Z', '2026-12-06 13:00Z',
+   '2027-03-03 13:00Z', '00000000-0000-0000-0000-0000000000a2');
+SELECT test.check(test.seqs('\x10', '2026-12-04 13:00Z') = '{}', 'DF26a overlapping chain withholds after the hold ends');
+UPDATE ledger.disclosure_deferral SET status = 'released', released_at = '2026-12-04 12:00Z',
+  released_by = '00000000-0000-0000-0000-000000000701', release_reason = 'Oversight release (synthetic)'
+  WHERE id = '00000000-0000-0000-0000-0000000000a2';
+SELECT test.check(test.seqs('\x10', '2026-12-04 13:00Z') = '{30}'
+  AND (SELECT v.deferred_until = '2026-12-04 12:00Z' FROM citizen.visible_access_events('\x10', '2026-12-04 13:00Z', '72 hours', '{INV,WAR}', false, NULL, 100) v)
+  AND (SELECT array_agg(status::text ORDER BY id) FROM ledger.disclosure_deferral WHERE subject_key = '\x10') = '{released,released,rejected}',
+  'DF26 release ends the whole chain: overlapping approval released, pending renewal rejected, entry visible at once');
+SELECT test.must_fail($$INSERT INTO ledger.disclosure_deferral (id, scope, subject_key, case_ref, coverage_from, chain_created_at,
+  reason, requested_by, created_at, lapses_at, expires_at, renews) VALUES (gen_random_uuid(), 'case', '\x10', 'SYN-CASE-2026-0006',
+  '2026-12-01 12:00Z', '2026-12-01 13:00Z', 'Revive a released chain', '00000000-0000-0000-0000-000000000301',
+  '2026-12-04 14:00Z', '2026-12-05 14:00Z', '2027-02-01', '00000000-0000-0000-0000-0000000000a1')$$, 'DF27 a released chain cannot be renewed');
+-- Exact 72-hour boundary: the entry has just become visible, so it can no longer be deferred.
+SELECT test.ev(31, '2026-12-10 12:00Z', 'INV-301', 'INV', 'SYN-CASE-2026-0007', 'investigation_query', '{\\x0b}', '{primary}');
+SELECT test.must_fail($$INSERT INTO ledger.disclosure_deferral (id, scope, subject_key, event_seq, case_ref, coverage_from, chain_created_at,
+  reason, requested_by, created_at, lapses_at, expires_at) VALUES (gen_random_uuid(), 'entry', '\x0b', 31, 'SYN-CASE-2026-0007',
+  '2026-12-10 12:00Z', '2026-12-13 12:00Z', 'Boundary entry deferral', '00000000-0000-0000-0000-000000000301',
+  '2026-12-13 12:00Z', '2026-12-14 12:00Z', '2027-01-01')$$, 'DF28 entry deferral at exactly 72 hours refused');
+SELECT test.must_fail($$INSERT INTO ledger.disclosure_deferral (id, scope, subject_key, case_ref, coverage_from, chain_created_at,
+  reason, requested_by, created_at, lapses_at, expires_at) VALUES (gen_random_uuid(), 'case', '\x0b', 'SYN-CASE-2026-0007',
+  '2026-12-10 12:00Z', '2026-12-13 12:00Z', 'Boundary case deferral', '00000000-0000-0000-0000-000000000301',
+  '2026-12-13 12:00Z', '2026-12-14 12:00Z', '2027-01-01')$$, 'DF28b case coverage reaching back exactly 72 hours refused');
+
 -- Ledger stays immutable throughout.
 SELECT test.must_fail($$DELETE FROM ledger.access_event WHERE seq = 4$$, 'DF25 withheld entries are never deleted from the ledger');
 

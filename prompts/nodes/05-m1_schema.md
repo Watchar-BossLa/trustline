@@ -53,7 +53,7 @@ orchestrator in MASTER_PROMPT.md load it. Replace {run_id} and {attempt}.
     - [ ] Migrations reproduce db/schema.sql exactly (diff of pg_dump --schema-only is empty)
     - [ ] App role cannot UPDATE or DELETE ledger.access_event
     - [ ] Schema test lists every table and fails if a master-record table appears
-    - [ ] db/tests/disclosure_test.sql passes against the migrated database (DF1-DF25)
+    - [ ] db/tests/disclosure_test.sql passes against the migrated database (DF1-DF28)
   </postconditions>
 </contract>
 <budget>At most 60,000 output tokens and 120 tool calls; exit budget_exceeded if the objective cannot be met within them.</budget>

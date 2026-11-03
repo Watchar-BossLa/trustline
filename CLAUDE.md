@@ -133,6 +133,8 @@ This build runs as a graph: `graphs/build.graph.yaml`. Each node has a rendered 
 - Terminal nodes write `<hef_state>` in `TRUSTLINE.hef.md` and append to `tasks/lessons.md`.
 - After changing `spec/registry.yaml` or `tools/gen_graph.py`: `python3 tools/gen_graph.py`,
   `python3 tools/graph_lint.py`, `python3 tools/sync_hef.py`, `python3 tools/render_node_prompts.py`.
+- After changing `rules/` or `policies/`: `python3 tools/build_test_console.py` (the offline test console in
+  `testing/` embeds them; `--check` fails if it is stale). Its 74 scenarios must stay green.
 
 ## Commands (available after M1)
 | Command | What it does |

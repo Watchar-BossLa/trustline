@@ -35,12 +35,14 @@ misuse from citizens (threat T16), so they must stay accountable.
 8. **References withheld.** Case and warrant numbers are never shown to the subject.
 9. **Accountability.** Approval by a different supervisor; pending requests lapse after 72 hours;
    at most 90 days per approval; a chain beyond 365 days needs a recorded magistrate's order;
-   early release by the case team or oversight; oversight sees every deferral in real time; released
+   early release by the case team or oversight, which ends the whole renewal chain at once (an
+   overlapping earlier approval is released and a pending renewal rejected, by database trigger);
+   oversight sees every deferral in real time; released
    entries carry `deferred_until`; published reports show deferral counts nationally only, with cells
    under 5 suppressed.
 
 ## Consequences
-- Verified on 2 Nov 2026: `db/tests/disclosure_test.sql` (25 scenarios, DF1–DF25) passes against
+- Verified on 2 Nov 2026: `db/tests/disclosure_test.sql` (DF1–DF28) passes against
   PostgreSQL 16, including the indistinguishability checks (the suspect's log equals a control
   person's log during the hold and the deferral, with and without self views, page by page).
 - The API must add the same guarantee at the HTTP layer (AC23 leak suite, persona S8 vs control S11).

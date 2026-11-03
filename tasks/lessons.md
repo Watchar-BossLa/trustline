@@ -9,3 +9,5 @@ Format: `- YYYY-MM-DD · <node> · <rule that prevents the mistake>`
 - 2026-11-02 · pack · Write permits as exact action-resource pairs; `action in [...]` with `resource in [...]` grants the cross product (the policy matrix caught oversight being able to review alerts on the deferrals capability).
 - 2026-11-02 · pack · Anything that touches a subject but is not a lookup of them (deferral handling) must use subject relation `administrative`, or it appears in their access log and tips them off.
 - 2026-11-02 · pack · Time-based visibility must also ignore records created after `now` (future-dated entries and later renewals), or tests and replays give wrong answers.
+- 2026-11-02 · pack · A state change that ends a deferral (release) must apply to every link of its renewal chain; renewals overlap, so an earlier unexpired link would otherwise keep withholding.
+- 2026-11-02 · pack · Time boundaries that decide visibility must agree exactly: if an entry is visible at hold + 0, a deferral at hold + 0 must be refused (use strict comparisons on both sides).

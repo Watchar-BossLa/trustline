@@ -288,7 +288,7 @@ nodes:
     - Migrations reproduce db/schema.sql exactly (diff of pg_dump --schema-only is empty)
     - App role cannot UPDATE or DELETE ledger.access_event
     - Schema test lists every table and fails if a master-record table appears
-    - db/tests/disclosure_test.sql passes against the migrated database (DF1-DF25)
+    - db/tests/disclosure_test.sql passes against the migrated database (DF1-DF28)
   context:
     mode: flat
     include:

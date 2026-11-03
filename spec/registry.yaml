@@ -320,7 +320,7 @@ acceptance_criteria:
   - id: AC23
     verifies: [R21]
     text: >
-      The database scenario suite db/tests/disclosure_test.sql passes (DF1-DF25), and the API leak
+      The database scenario suite db/tests/disclosure_test.sql passes (DF1-DF28), and the API leak
       suite passes for persona S8 against control persona S11: while a case deferral covers S8's
       investigative lookups, every citizen-facing response for S8 (access log at every page size from
       1 to 25 with cursors and include_self both ways, My Record, dispute attempts against the

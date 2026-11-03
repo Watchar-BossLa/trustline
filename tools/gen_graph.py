@@ -185,7 +185,7 @@ M = [
         build_node("m1_schema", "Turn db/schema.sql into sqlx migrations with roles and append-only triggers, plus the no-master-records schema test.",
                    ["R4", "R12", "T1.5"], ["db/schema.sql", "docs/03-data-model.md", "db/tests/disclosure_test.sql"],
                    ["Migrations reproduce db/schema.sql exactly (diff of pg_dump --schema-only is empty)", "App role cannot UPDATE or DELETE ledger.access_event", "Schema test lists every table and fails if a master-record table appears",
-                    "db/tests/disclosure_test.sql passes against the migrated database (DF1-DF25)"],
+                    "db/tests/disclosure_test.sql passes against the migrated database (DF1-DF28)"],
                    ["db/migrations/", "crates/api/tests/schema.rs", "Makefile"]),
         build_node("m1_seed", "Implement the deterministic synthetic data generator for TRUSTLINE tables and mock-agency fixtures.",
                    ["T1.6"], ["docs/09-synthetic-data.md", "rules/"],

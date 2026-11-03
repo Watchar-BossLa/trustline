@@ -19,6 +19,7 @@
 | Graph | `python3 tools/graph_lint.py` | OK |
 | Web | `pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test` | All pass |
 | E2E | `pnpm -C apps/web test:e2e` (Playwright demo flow + axe) | Pass; no serious/critical axe violations |
+| Test console | `python3 tools/build_test_console.py --check`; open `testing/trustline-test-console.html`, Run all tests | File matches the rules; 0 failures |
 
 ## Acceptance criteria → tests
 
@@ -46,7 +47,7 @@
 | AC20 | `crates/api/tests/citizen.rs` | Own record; dispute to oversight |
 | AC21 | `crates/api/tests/court.rs` | Licensing and citizen see date; roadside sees flag only |
 | AC22 | `apps/web/e2e/a11y.spec.ts`; `apps/web/e2e/perf.spec.ts` | axe; 3G throttling < 3 s |
-| AC23 | `db/tests/disclosure_test.sql` (`make db-test`); `crates/api/tests/disclosure_leak.rs` | DF1–DF25; S8 vs control S11 response-by-response equality; identical 404s; co-owner; protected officer |
+| AC23 | `db/tests/disclosure_test.sql` (`make db-test`); `crates/api/tests/disclosure_leak.rs` | DF1–DF28; S8 vs control S11 response-by-response equality; identical 404s; co-owner; protected officer |
 | AC24 | `db/tests/disclosure_test.sql`; `crates/api/tests/deferral_lifecycle.rs` | Approval, lapse, 90-day and 365-day limits, renewal continuity, early release, oversight listing, administrative entries |
 
 ## Section 179 and 107 test table (AC9, AC14)
@@ -105,6 +106,9 @@ Passed on 2 Nov 2026 against PostgreSQL 16 with the schema in this pack.
 | DF21–DF23 | Unapproved request | Withholds until it lapses at 72 h; no deferred_until marker |
 | DF24 | Rejected request | Stops withholding once the hold ends |
 | DF25 | Delete a withheld entry | Refused (ledger is append-only) |
+| DF26 | Release one link of a renewal chain whose earlier approval still runs and whose next renewal is pending | The whole chain ends at once: earlier link released, pending renewal rejected, entry visible with `deferred_until` = release time |
+| DF27 | Renew a released chain | Refused |
+| DF28 | Defer an entry, or reach coverage back, exactly 72 hours after the lookup | Refused (the entry has just become visible) |
 
 ## Performance and resilience
 

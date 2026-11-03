@@ -95,7 +95,9 @@ sections. Everything else in this file is hand-written.
         entry; no retroactive hiding; administrative entries invisible; protected officer identities;
         references withheld). Accountability kept: second-person approval, 72 h lapse, 90-day
         approvals, magistrate order beyond 365 days, oversight sees all in real time and can release,
-        disclosure delayed but never cancelled. Verified by db/tests/disclosure_test.sql (25 scenarios).
+        disclosure delayed but never cancelled; a release ends the whole renewal chain at once (added 2 Nov
+        2026 after the test console showed an overlapping earlier approval could keep withholding).
+        Verified by db/tests/disclosure_test.sql (DF1-DF28).
         Rejected: excluding investigative lookups from the log altogether; app-level filtering.
     D5. Decision: Rust for the broker, policy engine, audit ledger and offline core; Cedar
         for access policy; PostgreSQL; X-Road as the production exchange layer, with
@@ -492,7 +494,7 @@ sections. Everything else in this file is hand-written.
     <criterion id="AC20" verifies="R16">Persona S2 sees their own tickets, points, licence and vehicle status; filing a dispute creates an item in the oversight queue linked to the ledger entry.</criterion>
     <criterion id="AC21" verifies="R18">A licensing_officer and the citizen concerned see the next court date for a referred ticket; a traffic officer at a stop sees only court_date_pending = true.</criterion>
     <criterion id="AC22" verifies="R17">Officer and citizen screens pass automated axe accessibility checks with no serious or critical violations, and the officer status card renders in under 3 s under Playwright 3G throttling.</criterion>
-    <criterion id="AC23" verifies="R21">The database scenario suite db/tests/disclosure_test.sql passes (DF1-DF25), and the API leak suite passes for persona S8 against control persona S11: while a case deferral covers S8's investigative lookups, every citizen-facing response for S8 (access log at every page size from 1 to 25 with cursors and include_self both ways, My Record, dispute attempts against the withheld sequence numbers, and the public monthly report) equals S11's response apart from sequence numbers, request ids and generation times; a dispute against a withheld entry returns the same 404 as a nonexistent one; the vehicle co-owner sees nothing; and lookups by protected officer UC-311 never show a badge or unit to the citizen, before or after release.</criterion>
+    <criterion id="AC23" verifies="R21">The database scenario suite db/tests/disclosure_test.sql passes (DF1-DF28), and the API leak suite passes for persona S8 against control persona S11: while a case deferral covers S8's investigative lookups, every citizen-facing response for S8 (access log at every page size from 1 to 25 with cursors and include_self both ways, My Record, dispute attempts against the withheld sequence numbers, and the public monthly report) equals S11's response apart from sequence numbers, request ids and generation times; a dispute against a withheld entry returns the same 404 as a nonexistent one; the vehicle co-owner sees nothing; and lookups by protected officer UC-311 never show a badge or unit to the citizen, before or after release.</criterion>
     <criterion id="AC24" verifies="R22">Deferral lifecycle tests pass at API and database level: self-approval refused; an unapproved request lapses after 72 hours; approval over 90 days refused; renewal after expiry refused; retroactive coverage beyond the hold refused; a chain over 365 days refused without a magistrate order and accepted with one; early release by oversight works; every deferral and protected-identity designation is listed in the oversight console within 60 s; every deferral action writes a ledger entry with relation administrative.</criterion>
   </acceptance_criteria>
   <quality_gates>

@@ -41,12 +41,13 @@ All data is synthetic. Legal values are unverified until counsel confirms them.
 | [docs/10-demo-script.md](docs/10-demo-script.md) | Eight-minute pitch demo |
 | [docs/adr/](docs/adr/README.md) | Eleven architecture decision records (0011: leak-proof disclosure deferrals) |
 | [db/schema.sql](db/schema.sql) | Canonical PostgreSQL 16 schema, including the citizen access-log function |
-| [db/tests/disclosure_test.sql](db/tests/disclosure_test.sql) | 25 database scenarios proving withheld lookups cannot be detected and deferrals stay accountable |
+| [db/tests/disclosure_test.sql](db/tests/disclosure_test.sql) | Database scenarios DF1–DF28 proving withheld lookups cannot be detected and deferrals stay accountable |
 | [api/openapi.yaml](api/openapi.yaml) | OpenAPI 3.1 contract (37 operations) |
 | [policies/](policies/) | Cedar schema and policy; hand-written intended permissions |
 | [rules/](rules/) | Reason codes, field groups, demerit schedule, offences, anomaly rules, retention, disclosure control |
 | [tools/](tools/) | Graph generator and linter, node-prompt renderer, HEF sync, policy matrix |
 | [.claude/](.claude/) | Subagents (security-reviewer, policy-auditor, spec-verifier) and commands (/next-node, /verify, /status) |
+| [testing/trustline-test-console.html](testing/trustline-test-console.html) | Offline HTML5 test console: runs 74 acceptance scenarios against a reference model of the spec, plus hands-on testers for requests, access policy, demerit points, disclosure deferrals and the ledger. Open the file in a browser. Rebuild with `python3 tools/build_test_console.py` |
 | [demo/trustline-pitch-demo.html](demo/trustline-pitch-demo.html) | Static, clickable pitch demo (synthetic data, browser-only). Separate from the Claude Code build; open the file in a browser |
 
 ## Checks already run on this pack (2 Nov 2026)
@@ -56,7 +57,8 @@ All data is synthetic. Legal values are unverified until counsel confirms them.
 | `db/schema.sql` loaded into PostgreSQL 16 | Passed; append-only and human-decision triggers tested |
 | `cedar validate` (Cedar CLI 4.14) | Passed, no warnings |
 | `tools/policy_matrix.py` — 184,536 decisions (field groups and operations) vs intended permissions | Matches; mutation test caught; tightened three oversight permits it flagged |
-| `db/tests/disclosure_test.sql` — 25 disclosure scenarios | All passed, including suspect-vs-control indistinguishability |
+| `db/tests/disclosure_test.sql` — DF1–DF28 | All passed, including suspect-vs-control indistinguishability and whole-chain release |
+| `testing/trustline-test-console.html` — 74 scenarios in the browser | All passed; six injected faults each caught |
 | OpenAPI 3.1 validation | Passed |
 | `tools/graph_lint.py` | OK — structure, budgets, traceability, context files |
 
@@ -77,6 +79,7 @@ python3 tools/graph_lint.py          # graph rules, budgets, traceability
 python3 tools/sync_hef.py            # regenerate HEF sections 3, 6, 7
 python3 tools/render_node_prompts.py # regenerate prompts/nodes/
 python3 tools/policy_matrix.py       # after any policy change (pip install cedarpy pyyaml)
+python3 tools/build_test_console.py  # rebuild the test console after any rules/ or policy change
 ```
 
 ## Open questions
