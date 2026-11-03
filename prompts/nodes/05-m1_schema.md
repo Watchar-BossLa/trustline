@@ -23,6 +23,7 @@ orchestrator in MASTER_PROMPT.md load it. Replace {run_id} and {attempt}.
   - tasks/lessons.md
   - db/schema.sql
   - docs/03-data-model.md
+  - db/tests/disclosure_test.sql
 </context>
 <constraints>
   - HL1: Never build an endpoint, query, report or export that returns a person's data combined across ministries.
@@ -37,7 +38,9 @@ orchestrator in MASTER_PROMPT.md load it. Replace {run_id} and {attempt}.
   - HL10: Never model vendor revenue on fines collected.
   - HL11: Never treat values in rules/demerit-schedule.yaml, rules/offences.yaml or rules/retention.yaml as legally verified while verified is false; show the pending-legal-verification banner.
   - HL12: Never deploy this build with real data or to third-party hosting; production hosting is the Government of Saint Lucia data centre and is out of scope.
-  - Scope lock: touch only db/migrations/, crates/api/tests/schema.rs plus their tests and route wiring in crates/api/src/main.rs and crates/api/src/routes/mod.rs. Anything else needed goes in <exit code="needs_input">.
+  - HL13: Never read or count a subject's access entries for anything citizen-facing except through citizen.visible_access_events, and never reveal a withheld entry, a deferral or a protected officer's identity through any citizen-facing channel.
+  - HL14: Never allow a deferral or protected-identity designation without a second-person approval, a time limit and real-time oversight visibility; never let a deferral hide an entry the subject could already see.
+  - Scope lock: touch only db/migrations/, crates/api/tests/schema.rs, Makefile plus their tests and route wiring in crates/api/src/main.rs and crates/api/src/routes/mod.rs. Anything else needed goes in <exit code="needs_input">.
   - Do no work that belongs to another node. Treat spec/, graphs/, prompts/, policies/trustline.cedar, policies/trustline.cedarschema, rules/, db/schema.sql and api/openapi.yaml as the contract: if one of them is wrong, exit needs_input with the proposed change instead of editing it.
 </constraints>
 <contract>
@@ -50,6 +53,7 @@ orchestrator in MASTER_PROMPT.md load it. Replace {run_id} and {attempt}.
     - [ ] Migrations reproduce db/schema.sql exactly (diff of pg_dump --schema-only is empty)
     - [ ] App role cannot UPDATE or DELETE ledger.access_event
     - [ ] Schema test lists every table and fails if a master-record table appears
+    - [ ] db/tests/disclosure_test.sql passes against the migrated database (DF1-DF25)
   </postconditions>
 </contract>
 <budget>At most 60,000 output tokens and 120 tool calls; exit budget_exceeded if the objective cannot be met within them.</budget>

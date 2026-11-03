@@ -44,14 +44,28 @@ data-processing agreement is required.
 | Accountability | Ledger, oversight console, decisions recorded with officer and reason |
 | Special categories | Health data only via opt-in emergency card, EMS only; police excluded by policy |
 
-## Disclosure deferrals (decision D4, open question Q6)
+## Disclosure deferrals (decision D4 — approved by Kelvin on 2 Nov 2026)
 
-Showing every lookup to the citizen can tip off a suspect. The design allows an investigator to
-request a **time-limited deferral** for a specific ledger entry tied to an open case; a different
-officer with the supervisor role must approve; maximum 90 days per approval (configurable);
-oversight sees every deferral and must acknowledge it; the entry appears in the citizen's log
-automatically at expiry, marked with the deferral date. The citizen's log never reveals that a
-deferral exists while it is active. Counsel should confirm the legal basis and maximum duration.
+Showing every lookup to the citizen would tip off a suspect and could expose undercover officers.
+The approved design (ADR 0011, `rules/disclosure.yaml`) makes withheld lookups undetectable while
+keeping every deferral accountable:
+
+| Element | Design (values to confirm with counsel) |
+| --- | --- |
+| Provisional hold | INV and WAR lookups withheld automatically for 72 hours |
+| Deferral | Case-scoped (lookups citing the case or by the case team's units) or entry-scoped; case must be open at source |
+| Approval | Investigator requests; a different supervisor approves; unapproved requests lapse after 72 hours |
+| Duration | At most 90 days per approval; renewal only while active; beyond 365 days only with a magistrate's order |
+| No trace | Withheld from every person attached to the entry; single database read path; identical 404s; no counts, notifications or report cells that reveal it; administrative entries never shown |
+| After release | Entry appears with its original time and `deferred_until`; case number never shown |
+| Protected identities | Undercover officers' badge and unit never shown to citizens; designated by a supervisor, acknowledged by oversight |
+| Oversight | Sees every deferral and designation in real time; can release early; deferral counts published nationally only, cells under 5 suppressed |
+
+Disclosure is delayed, not cancelled. Questions for counsel: the legal basis for delaying a data
+subject's access (Data Protection Act Part 6 exemptions), the maximum durations, whether a
+magistrate's order is the right threshold beyond a year, whether officers at a stop must identify
+themselves (affects protected identities), and how formal subject-access requests to RSLPF are
+handled while a deferral is active.
 
 ## Data-subject rights (to design with counsel)
 Access: the access log and My Record cover most requests; formal subject-access requests for
@@ -62,7 +76,7 @@ and erasure: limited for law-enforcement processing; ledger entries are never er
 1. Which DPA provisions apply while Part 2 (Commissioner) is not commenced, and who oversees?
 2. Legal basis for each processing line above, and the Part 6 exemptions relied on.
 3. Lawfulness of showing officer badge numbers to citizens (staff privacy vs accountability).
-4. Deferral legal basis and maximum duration.
+4. Deferral legal basis, maximum durations, the magistrate threshold, and protected-identity masking.
 5. Retention periods (rules/retention.yaml).
 6. Emergency-card consent wording and withdrawal process.
 7. Whether section 179 can operate on electronically recorded convictions and notices, and

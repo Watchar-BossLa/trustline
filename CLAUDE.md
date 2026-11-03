@@ -109,6 +109,9 @@ oversight ← api, cli. No crate depends on api. demerit and offline do no I/O.
 - **Errors:** `application/problem+json` per the `Problem` schema; never leak internals or
   which agency holds what.
 - **Unknown beats stale.** A source that times out yields `UNKNOWN` with its source status.
+- **Withheld means never existed.** A citizen must not be able to tell a withheld access entry from
+  a lookup that never happened: same pages, same 404s, no counts, no notifications (ADR 0011).
+  Deferral handling is written to the ledger with subject relation `administrative`.
 - **Rules are data.** Reason codes, field groups, demerit points, offences, anomaly thresholds
   and retention come from `rules/*.yaml`, loaded and validated at startup; the rules file hash is
   recorded with every decision that used it.
@@ -128,8 +131,8 @@ This build runs as a graph: `graphs/build.graph.yaml`. Each node has a rendered 
 - Log every node exit as one JSON line in `tasks/trace.jsonl`.
 - Back-edges are bounded loops; when a loop's `max_iterations` is exhausted, route to `blocked`.
 - Terminal nodes write `<hef_state>` in `TRUSTLINE.hef.md` and append to `tasks/lessons.md`.
-- After changing `spec/registry.yaml` or the graph: `python3 tools/graph_lint.py`,
-  `python3 tools/sync_hef.py`, `python3 tools/render_node_prompts.py`.
+- After changing `spec/registry.yaml` or `tools/gen_graph.py`: `python3 tools/gen_graph.py`,
+  `python3 tools/graph_lint.py`, `python3 tools/sync_hef.py`, `python3 tools/render_node_prompts.py`.
 
 ## Commands (available after M1)
 | Command | What it does |
@@ -138,6 +141,7 @@ This build runs as a graph: `graphs/build.graph.yaml`. Each node has a rendered 
 | `make keys` | Generate local dev keys (ledger signing, bundle signing, pepper) into `.local/` (git-ignored) |
 | `make db` | Start Postgres and apply migrations |
 | `make seed` | Load synthetic personas and fixtures |
+| `make db-test` | Run `db/tests/disclosure_test.sql` against a fresh database |
 | `make run` | Start api, mock-agencies and web via docker compose |
 | `make test` | All Rust and web tests |
 | `make verify` | Every quality gate: fmt, clippy, tests, deny, gitleaks, cedar, OpenAPI, web |
@@ -156,9 +160,15 @@ This build runs as a graph: `graphs/build.graph.yaml`. Each node has a rendered 
 - Do not model revenue on fines (HL10).
 - Do not treat rules marked `verified: false` as law; keep the pending-legal-verification banner (HL11).
 - Do not deploy this build anywhere with real data (HL12).
+- Do not read or count access entries for anything citizen-facing except through
+  `citizen.visible_access_events`; never reveal a withheld entry, a deferral or a protected
+  officer's identity through any citizen-facing channel (HL13).
+- Do not allow a deferral or protected-identity designation without second-person approval, a time
+  limit and oversight visibility; never let a deferral hide an entry the subject could already see (HL14).
 - Do not edit the contract files (spec/, graphs/, prompts/, policies/, rules/, db/schema.sql,
   api/openapi.yaml) inside a build node; propose changes through `needs_input`.
 
 ## Current state
-- Specification pack complete (2 Nov 2026). No code yet.
+- Specification pack complete (2 Nov 2026), iteration 2: leak-proof disclosure deferrals approved
+  by Kelvin and specified (ADR 0011). No code yet.
 - Next node: `plan_build`. Start with MASTER_PROMPT.md.

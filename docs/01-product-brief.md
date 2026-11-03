@@ -51,7 +51,8 @@ analytics (R20), plate-recognition cameras, OECS cross-border checks, production
 ## Success measures for the pilot (proposed; confirm baselines in Phase 0)
 - Median roadside check under 2 s; status card available for 99% of checks during service hours.
 - Share of tickets paid within the payment period rises against the Phase 0 baseline.
-- 100% of lookups appear in the ledger and in the citizen's access log (except approved deferrals).
+- 100% of lookups appear in the ledger and in the citizen's access log (investigative lookups after the hold or deferral ends).
+- Zero detectable withheld entries in the AC23 leak suite; every deferral visible to oversight.
 - Every anomaly alert reviewed within 10 working days.
 - Zero health-data disclosures to police roles (structural, verified by test and audit).
 
@@ -67,5 +68,5 @@ with source escrow; product IP retained by Limah Innovations; no share of fines.
 | Q3 | Which established integrator for World Bank-funded bids? | Kelvin |
 | Q4 | Keep the name TRUSTLINE? | Kelvin |
 | Q5 | Who funds Phase 0 and the demo? | Kelvin |
-| Q6 | Confirm disclosure deferrals for active investigations (decision D4) | Kelvin, then counsel |
+| Q6 | ~~Confirm disclosure deferrals~~ — approved by Kelvin on 2 Nov 2026 (ADR 0011); durations and legal basis go to counsel | Counsel |
 | Q7 | Digital licence on PWEV credentials or the government's planned secure wallet? | Kelvin |

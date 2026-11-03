@@ -3,7 +3,8 @@
 hand-written intent in policies/expected-permissions.yaml.
 
 Every role × purpose × field group × combination of the six context flags is evaluated
-(11 × 11 × 22 × 64 = 170,368 decisions). Exit code 0 when policy and intent agree.
+(11 × 11 × 22 × 64 = 170,368 decisions), plus every operation × capability × principal × purpose ×
+device attestation. Exit code 0 when policy and intent agree.
 
 Requires:  pip install cedarpy pyyaml
 Usage:     python3 tools/policy_matrix.py [--markdown]   (--markdown prints the docs/05 table)
@@ -64,6 +65,35 @@ def main() -> int:
                 expected.append(ok)
                 labels.append((p["role"], purpose, group, ctx))
 
+    # Operations: every action x capability x principal x purpose x attestation.
+    caps = exp["capabilities"]
+    for c in caps:
+        entities.append({"uid": {"__entity": {"type": "Trustline::Capability", "id": c}}, "attrs": {}, "parents": []})
+    op_actions = {}
+    for op in exp["operations"]:
+        op_actions.setdefault(op["action"], []).append(op)
+    for action, ops in op_actions.items():
+        for p in exp["principals"]:
+            if p["type"] == "Citizen":
+                continue
+            officer_action = action not in ("RecordCourtOutcome", "RecordPayment")
+            if officer_action != (p["type"] == "Officer"):
+                continue  # schema: officer actions apply only to officers, court actions only to services
+            for cap, purpose, attested in itertools.product(caps, purposes, [False, True]):
+                requests.append({
+                    "principal": f'Trustline::{p["type"]}::"{p["role"]}"',
+                    "action": f'Trustline::Action::"{action}"',
+                    "resource": f'Trustline::Capability::"{cap}"',
+                    "context": {"purpose": purpose, "device_attested": attested},
+                })
+                ok = any(op["capability"] == cap and any(
+                    p["role"] in g["roles"] and ("*" in g["purposes"] or purpose in g["purposes"]) for g in op["grants"])
+                    for op in ops)
+                if p["type"] == "Officer":
+                    ok = ok and attested
+                expected.append(ok)
+                labels.append((p["role"], purpose, f"{action}:{cap}", {"device_attested": attested}))
+
     results = cedarpy.is_authorized_batch(requests, policies, entities)
     mismatches = []
     health_leaks = []
@@ -75,7 +105,7 @@ def main() -> int:
             flags_on = [k for k, v in ctx.items() if v is True]
             mismatches.append(f"{'ALLOWED' if allowed else 'DENIED'} but expected {'allow' if ok else 'deny'}: "
                               f"{role} {purpose} {group} flags={flags_on}")
-        if allowed and role in police and groups_cfg[group]["domain"] == "health":
+        if allowed and role in police and group in groups_cfg and groups_cfg[group]["domain"] == "health":
             health_leaks.append(f"{role} {purpose} {group}")
 
     print(f"evaluated {len(requests):,} decisions")

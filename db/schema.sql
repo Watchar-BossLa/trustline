@@ -47,8 +47,10 @@ CREATE TYPE core.record_status     AS ENUM ('active', 'suspended', 'revoked');
 CREATE TYPE core.hit_kind          AS ENUM ('warrant', 'stolen_vehicle');
 CREATE TYPE core.hit_status        AS ENUM ('unconfirmed', 'confirmed', 'cleared');
 CREATE TYPE ledger.decision        AS ENUM ('allow', 'partial', 'deny', 'error', 'rate_limited');
-CREATE TYPE ledger.subject_relation AS ENUM ('primary', 'resolved_holder', 'vehicle_owner', 'self');
-CREATE TYPE ledger.deferral_status AS ENUM ('pending_approval', 'active', 'released', 'rejected');
+CREATE TYPE ledger.subject_relation AS ENUM ('primary', 'resolved_holder', 'vehicle_owner', 'self',
+                                             'administrative');  -- administrative: never shown in a citizen log
+CREATE TYPE ledger.deferral_scope  AS ENUM ('case', 'entry');
+CREATE TYPE ledger.deferral_status AS ENUM ('pending_approval', 'active', 'released', 'rejected', 'lapsed');
 CREATE TYPE tickets.ticket_status  AS ENUM ('issued', 'paid', 'referred_to_court', 'convicted', 'dismissed', 'withdrawn');
 CREATE TYPE tickets.payment_channel AS ENUM ('online_simulated', 'court_counter', 'government_platform');
 CREATE TYPE tickets.court_outcome  AS ENUM ('pending', 'convicted', 'dismissed', 'withdrawn');
@@ -82,6 +84,20 @@ CREATE TABLE core.officer (
   subject_key     bytea,                            -- officer's own NIC key, for self/colleague-lookup rules
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Officers whose identity must never reach a subject (undercover, protected units). R21.
+CREATE TABLE core.protected_identity_designation (
+  id              uuid PRIMARY KEY,
+  officer_id      uuid NOT NULL REFERENCES core.officer(id),
+  reason          text NOT NULL CHECK (length(reason) >= 10),
+  designated_by   uuid NOT NULL REFERENCES core.officer(id),
+  designated_at   timestamptz NOT NULL DEFAULT now(),
+  ended_at        timestamptz,
+  oversight_acknowledged_at timestamptz,
+  CHECK (designated_by <> officer_id),
+  CHECK (ended_at IS NULL OR ended_at >= designated_at)
+);
+CREATE INDEX protected_identity_active_idx ON core.protected_identity_designation(officer_id) WHERE ended_at IS NULL;
 
 CREATE TABLE core.device (
   id              uuid PRIMARY KEY,
@@ -162,6 +178,7 @@ CREATE TABLE ledger.access_event (
   actor_roles     text[] NOT NULL DEFAULT '{}',
   actor_agency    text,
   actor_unit      text,
+  actor_protected boolean NOT NULL DEFAULT false,   -- protected-identity designation in force when written (R21)
   device_id       uuid,
   purpose         text NOT NULL,
   case_ref        text,
@@ -213,24 +230,76 @@ CREATE TABLE ledger.checkpoint (
   UNIQUE (from_seq, to_seq)
 );
 
+-- Disclosure deferrals (decision D4, approved 2 Nov 2026). Rules: rules/disclosure.yaml.
+-- A deferral withholds access entries from citizen logs while an investigation is protected (R21)
+-- and stays accountable (R22). Visibility is computed by citizen.visible_access_events() below;
+-- the API must not filter citizen logs any other way.
 CREATE TABLE ledger.disclosure_deferral (
   id              uuid PRIMARY KEY,
-  event_seq       bigint NOT NULL REFERENCES ledger.access_event(seq),
-  subject_key     bytea NOT NULL,
-  case_ref        text NOT NULL,
-  reason          text NOT NULL,
+  scope           ledger.deferral_scope NOT NULL,
+  subject_key     bytea NOT NULL,                   -- the protected subject (keyed hash)
+  event_seq       bigint REFERENCES ledger.access_event(seq),   -- entry scope only
+  case_ref        text NOT NULL,                    -- open case (or warrant) validated at source
+  covered_units   text[] NOT NULL DEFAULT '{}',     -- case scope: lookups by these units are covered too
+  coverage_from   timestamptz NOT NULL,             -- case scope: earliest lookup covered; inherited by renewals
+  chain_created_at timestamptz NOT NULL,            -- created_at of the first deferral in a renewal chain
+  reason          text NOT NULL CHECK (length(reason) >= 10),
   requested_by    uuid NOT NULL REFERENCES core.officer(id),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  lapses_at       timestamptz NOT NULL,             -- a request still pending at this time stops withholding
   approved_by     uuid REFERENCES core.officer(id),
   approved_at     timestamptz,
   expires_at      timestamptz NOT NULL,
+  renews          uuid REFERENCES ledger.disclosure_deferral(id),
+  magistrate_order_ref text,                        -- mandatory once a chain exceeds 365 days
   status          ledger.deferral_status NOT NULL DEFAULT 'pending_approval',
-  oversight_acknowledged_at timestamptz,
+  decided_at      timestamptz,                      -- approval or rejection time
   released_at     timestamptz,
-  created_at      timestamptz NOT NULL DEFAULT now(),
+  released_by     uuid REFERENCES core.officer(id),
+  release_reason  text,
+  oversight_acknowledged_at timestamptz,
   CHECK (approved_by IS NULL OR approved_by <> requested_by),
-  CHECK (status <> 'active' OR approved_by IS NOT NULL)
+  CHECK (status NOT IN ('active', 'released') OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)),
+  CHECK (status <> 'released' OR released_at IS NOT NULL),
+  CHECK ((scope = 'entry') = (event_seq IS NOT NULL)),
+  CHECK (lapses_at > created_at AND lapses_at <= created_at + interval '72 hours'),
+  CHECK (expires_at > created_at AND expires_at <= created_at + interval '90 days'),
+  CHECK (expires_at <= coverage_from + interval '365 days' OR magistrate_order_ref IS NOT NULL),
+  CHECK (chain_created_at <= created_at),
+  CHECK (renews IS NOT NULL OR chain_created_at = created_at),
+  CHECK (coverage_from >= chain_created_at - interval '72 hours'),
+  CHECK (renews IS DISTINCT FROM id)
 );
 CREATE INDEX deferral_subject_idx ON ledger.disclosure_deferral(subject_key, status);
+
+-- Renewals must continue an active deferral without a gap, for the same subject, case and scope,
+-- so no withheld entry can surface at a renewal boundary.
+CREATE FUNCTION ledger.check_deferral_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE prev ledger.disclosure_deferral%ROWTYPE;
+DECLARE ev_time timestamptz;
+BEGIN
+  IF NEW.renews IS NOT NULL THEN
+    SELECT * INTO prev FROM ledger.disclosure_deferral WHERE id = NEW.renews;
+    IF prev.id IS NULL
+       OR prev.status <> 'active' OR NEW.created_at >= prev.expires_at
+       OR prev.subject_key <> NEW.subject_key OR prev.case_ref <> NEW.case_ref OR prev.scope <> NEW.scope
+       OR prev.coverage_from <> NEW.coverage_from OR prev.chain_created_at <> NEW.chain_created_at
+       OR prev.event_seq IS DISTINCT FROM NEW.event_seq THEN
+      RAISE EXCEPTION 'a renewal must continue an active deferral for the same subject, case, scope and coverage';
+    END IF;
+  ELSIF NEW.scope = 'entry' THEN
+    SELECT occurred_at INTO ev_time FROM ledger.access_event WHERE seq = NEW.event_seq;
+    IF NEW.created_at > ev_time + interval '72 hours' OR NEW.coverage_from <> ev_time THEN
+      RAISE EXCEPTION 'an entry deferral must be requested while the entry is still withheld';
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER disclosure_deferral_insert_check
+  BEFORE INSERT ON ledger.disclosure_deferral
+  FOR EACH ROW EXECUTE FUNCTION ledger.check_deferral_insert();
 
 -- Append-only guard: rejects UPDATE/DELETE on ledger tables for every role, owner included.
 CREATE FUNCTION ledger.reject_mutation() RETURNS trigger
@@ -419,6 +488,84 @@ CREATE TABLE citizen.dispute (
 );
 
 -- ---------------------------------------------------------------------------
+-- citizen: the access log. THE ONLY permitted way to read a subject's access entries for a
+-- citizen-facing response (R6, R21). Filtering happens here, before ordering and paging, so page
+-- sizes and cursors cannot reveal a withheld entry. Parameters come from rules/disclosure.yaml.
+-- An entry is withheld from EVERY person attached to it (e.g. a vehicle's co-owner) while:
+--   (a) its purpose is a hold purpose (INV, WAR) and it is younger than the provisional hold, or
+--   (b) a pending (not yet lapsed) or active (not yet expired) deferral covers it.
+-- Administrative entries are never shown; the citizen's own views only with p_include_self.
+-- Badge and unit are masked for protected identities; references are withheld for hold purposes.
+-- ---------------------------------------------------------------------------
+CREATE FUNCTION citizen.visible_access_events(
+  p_subject        bytea,
+  p_now            timestamptz,
+  p_hold           interval,
+  p_hold_purposes  text[],
+  p_include_self   boolean,
+  p_before_seq     bigint,       -- NULL = newest page
+  p_limit          integer
+) RETURNS TABLE (
+  seq bigint, occurred_at timestamptz, agency text, unit text, badge text, purpose text,
+  reference text, request_kind text, decision ledger.decision, offline boolean, deferred_until timestamptz
+)
+LANGUAGE sql STABLE AS $$
+  WITH mine AS (
+    SELECT DISTINCT s.event_seq
+    FROM ledger.access_event_subject s
+    WHERE s.subject_key = p_subject
+      AND s.relation <> 'administrative'
+      AND (p_include_self OR s.relation <> 'self')
+  ),
+  covering AS (                     -- (event, deferral) pairs where the deferral covers the event
+    SELECT e.seq AS event_seq, d.status, d.created_at, d.lapses_at, d.expires_at, d.released_at
+    FROM ledger.access_event e
+    JOIN mine m ON m.event_seq = e.seq
+    JOIN ledger.access_event_subject es ON es.event_seq = e.seq
+    JOIN ledger.disclosure_deferral d ON d.subject_key = es.subject_key
+    WHERE (d.scope = 'entry' AND d.event_seq = e.seq)
+       OR (d.scope = 'case'
+           AND e.occurred_at >= d.coverage_from
+           AND e.occurred_at <  d.expires_at
+           AND (e.occurred_at >= d.chain_created_at OR e.purpose = ANY (p_hold_purposes))
+           AND (e.case_ref = d.case_ref OR e.warrant_ref = d.case_ref OR e.actor_unit = ANY (d.covered_units)))
+  )
+  SELECT
+    e.seq,
+    e.occurred_at,
+    e.actor_agency,
+    CASE WHEN e.actor_protected OR pd.officer_id IS NOT NULL THEN NULL ELSE e.actor_unit END,
+    CASE WHEN e.actor_protected OR pd.officer_id IS NOT NULL THEN NULL ELSE e.actor_badge END,
+    e.purpose,
+    CASE WHEN e.purpose = ANY (p_hold_purposes) THEN NULL ELSE coalesce(e.case_ref, e.incident_ref) END,
+    e.request_kind,
+    e.decision,
+    e.offline,
+    (SELECT max(least(coalesce(c.released_at, c.expires_at), c.expires_at))
+       FROM covering c
+      WHERE c.event_seq = e.seq AND c.status IN ('active', 'released'))
+  FROM ledger.access_event e
+  JOIN mine m ON m.event_seq = e.seq
+  LEFT JOIN LATERAL (
+    SELECT p.officer_id FROM core.protected_identity_designation p
+     WHERE p.officer_id = e.actor_id AND p.designated_at <= p_now AND (p.ended_at IS NULL OR p.ended_at > p_now)
+     LIMIT 1
+  ) pd ON true
+  WHERE e.occurred_at <= p_now
+    AND NOT (e.purpose = ANY (p_hold_purposes) AND e.occurred_at > p_now - p_hold)
+    AND NOT EXISTS (
+      SELECT 1 FROM covering c
+       WHERE c.event_seq = e.seq
+         AND c.created_at <= p_now
+         AND ((c.status = 'pending_approval' AND p_now < c.lapses_at)
+           OR (c.status = 'active' AND p_now < c.expires_at))
+    )
+    AND (p_before_seq IS NULL OR e.seq < p_before_seq)
+  ORDER BY e.seq DESC
+  LIMIT p_limit
+$$;
+
+-- ---------------------------------------------------------------------------
 -- oversight: alerts and monthly reports (aggregates only)
 -- ---------------------------------------------------------------------------
 CREATE TABLE oversight.alert (
@@ -471,8 +618,15 @@ GRANT SELECT, INSERT, UPDATE ON ledger.disclosure_deferral TO trustline_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA ledger TO trustline_app;
 REVOKE DELETE, TRUNCATE ON ALL TABLES IN SCHEMA core, ledger, tickets, demerit, citizen, oversight, ems FROM trustline_app;
 
-GRANT USAGE ON SCHEMA ledger, oversight TO trustline_oversight;
-GRANT SELECT ON ledger.access_event, ledger.checkpoint, ledger.disclosure_deferral, ledger.signing_key TO trustline_oversight;
+GRANT EXECUTE ON FUNCTION citizen.visible_access_events(bytea, timestamptz, interval, text[], boolean, bigint, integer) TO trustline_app;
+
+GRANT USAGE ON SCHEMA core, ledger, oversight TO trustline_oversight;
+GRANT SELECT ON ledger.access_event, ledger.access_event_subject, ledger.checkpoint, ledger.disclosure_deferral,
+               ledger.signing_key TO trustline_oversight;
+GRANT SELECT ON core.protected_identity_designation, core.officer TO trustline_oversight;
+GRANT UPDATE (status, released_at, released_by, release_reason, oversight_acknowledged_at)
+  ON ledger.disclosure_deferral TO trustline_oversight;
+GRANT UPDATE (oversight_acknowledged_at) ON core.protected_identity_designation TO trustline_oversight;
 GRANT SELECT, UPDATE ON oversight.alert TO trustline_oversight;
 GRANT SELECT ON oversight.monthly_report TO trustline_oversight;
 

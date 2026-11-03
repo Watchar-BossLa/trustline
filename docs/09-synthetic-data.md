@@ -26,7 +26,7 @@ fixtures for TRUSTLINE tables and for `services/mock-agencies/fixtures/`.
 | Active warrants | 5 |
 | Stolen vehicles | 4 |
 | Emergency-card opt-ins | 40 |
-| Officers | 9 named demo officers + 30 background officers |
+| Officers | 11 named demo officers (one with a protected identity) + 30 background officers |
 
 ## Demo personas
 
@@ -39,9 +39,11 @@ fixtures for TRUSTLINE tables and for `services/mock-agencies/fixtures/`.
 | S5 | Rocco Delaire | SYN-NIC-000005 · SYN-DL-000055 | Active warrant SYN-WAR-2026-0003 | AC11 |
 | S6 | Keisha Morne-Rouge | SYN-NIC-000006 · SYN-DL-000066 · SYN-PB 6606 | 8 points in the last year (2(b) 6 + 4(b) 2); receives SPEED-20 ticket → 15 → `suspend_6m` | AC8, AC10, demo steps 3–5 |
 | S7 | Bertrand Soufrière | SYN-NIC-000007 · SYN-DL-000077 | 12 points over 2 years, 6 in the last year → `notice_11_13` | AC9 |
-| S8 | Celine Anse-La-Raye | SYN-NIC-000008 · SYN-DL-000088 | Looked up 5 times in 24 h by OFF-102 with no stop record; one INV lookup under an approved deferral | AC7, AC12, demo steps 6–7 |
+| S8 | Celine Anse-La-Raye | SYN-NIC-000008 · SYN-DL-000088 | Looked up 5 times in 24 h by OFF-102 with no stop record; under case deferral for SYN-CASE-2026-0001 covering INV lookups by INV-301 and UC-311 and a CID pretext stop; owns SYN-PA 0808 jointly with S12 | AC7, AC12, AC23, AC24, demo steps 6–7 |
 | S9 | Jonah Praslin | SYN-NIC-000009 | Opted in to emergency card (blood group O+, penicillin allergy, asthma) | AC16, demo step 8 |
 | S10 | Petra Dennery | SYN-NIC-000010 · SYN-DL-000100 | Court fine EC$800 unpaid 31 days after proceedings | AC14 |
+| S11 | Marc Ciceron | SYN-NIC-000011 · SYN-DL-000111 | Control person: the same non-investigative lookups as S8, never investigated — the AC23 leak suite compares S8's responses with S11's | AC23 |
+| S12 | Lena Mabouya | SYN-NIC-000012 | Co-owner of S8's car SYN-PA 0808; must see nothing of S8's withheld lookups until release | AC23 |
 
 ## Demo officers and principals
 
@@ -53,6 +55,8 @@ fixtures for TRUSTLINE tables and for `services/mock-agencies/fixtures/`.
 | INV-301 | DC Tessa Grandval | investigator | CID | attested |
 | CRS-351 | Sgt Ian Bexon | crash_investigator | Road Safety and Traffic Investigations | attested |
 | SUP-401 | Insp Marcus Belair | supervisor | CID | attested |
+| CID-302 | PC Alan Dauphin | traffic_officer | CID | attested (case-team pretext stop) |
+| UC-311 | (protected identity) | investigator | Covert Operations | attested; protected-identity designation by SUP-401 |
 | LIC-501 | Grace Monplaisir | licensing_officer | Division of Transport | attested |
 | EMS-601 | Leon Choc | ems_responder | Fire Service EMS | attested |
 | DPC-701 | Ruth Calixte | oversight_analyst | Data Protection oversight | attested |

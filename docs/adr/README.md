@@ -12,3 +12,4 @@
 | [0008](0008-human-decision-for-licence-actions.md) | Software proposes licence actions; a Licensing Authority officer decides |
 | [0009](0009-keyed-hash-subject-identifiers.md) | Keyed hashes for subject identifiers; encryption for tickets |
 | [0010](0010-officer-app-pwa-now-kotlin-later.md) | Officer app: PWA in the demo, native Kotlin with a Rust core in the pilot |
+| [0011](0011-leak-proof-disclosure-deferrals.md) | Leak-proof, accountable disclosure deferrals |

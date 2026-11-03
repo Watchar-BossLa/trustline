@@ -76,3 +76,25 @@ invariants:
   - No police role is ever allowed a field group whose domain is health, under any purpose or flags.
   - health_record and cross_domain_profile are never allowed to anyone.
   - Officers on unattested devices are allowed nothing.
+
+# Operations (non-read actions). An officer operation additionally requires an attested device.
+# purposes "*" = any purpose. Every action × capability × principal × purpose × attestation
+# combination not granted here must be denied.
+capabilities: [tickets, hits, licence_actions, deferrals, designations, alerts, court_records]
+operations:
+  - { action: IssueTicket, capability: tickets, grants: [{ roles: [traffic_officer, patrol_officer, supervisor], purposes: ["*"] }] }
+  - { action: ConfirmHit, capability: hits, grants: [{ roles: [dispatcher], purposes: [DSP] }] }
+  - { action: DecideLicenceAction, capability: licence_actions, grants: [{ roles: [licensing_officer], purposes: [LIC] }] }
+  - { action: RequestDeferral, capability: deferrals, grants: [{ roles: [investigator], purposes: [INV] }] }
+  - { action: ApproveDeferral, capability: deferrals, grants: [{ roles: [supervisor], purposes: [INV] }] }
+  - action: ReleaseDeferral
+    capability: deferrals
+    grants:
+      - { roles: [investigator, supervisor], purposes: [INV] }
+      - { roles: [oversight_analyst], purposes: [AUD] }
+  - { action: DesignateProtectedIdentity, capability: designations, grants: [{ roles: [supervisor], purposes: [INV] }] }
+  - { action: AcknowledgeDeferral, capability: deferrals, grants: [{ roles: [oversight_analyst], purposes: [AUD] }] }
+  - { action: AcknowledgeDesignation, capability: designations, grants: [{ roles: [oversight_analyst], purposes: [AUD] }] }
+  - { action: ReviewAlert, capability: alerts, grants: [{ roles: [oversight_analyst], purposes: [AUD] }] }
+  - { action: RecordCourtOutcome, capability: court_records, grants: [{ roles: [court_system], purposes: [CRT] }] }
+  - { action: RecordPayment, capability: court_records, grants: [{ roles: [court_system], purposes: [CRT] }] }

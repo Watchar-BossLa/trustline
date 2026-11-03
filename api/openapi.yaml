@@ -430,10 +430,19 @@ paths:
       x-ledger: true
       x-purposes: [CIT]
       description: |
-        Every access to the citizen's data, newest first. Entries under an active disclosure
-        deferral are omitted and the response never indicates that a deferral exists; released
-        entries show `deferred_until`. The citizen's own views (relation `self`) are excluded
-        unless `include_self=true`.
+        Every access to the citizen's data, newest first, read ONLY through the database function
+        `citizen.visible_access_events` (db/schema.sql), which applies rules/disclosure.yaml before
+        ordering and paging (R6, R21):
+        - Investigative lookups (INV, WAR) are withheld for a 72-hour provisional hold.
+        - Entries covered by a pending (not lapsed) or active (not expired) disclosure deferral are
+          withheld from every person attached to them, including vehicle co-owners.
+        - Administrative entries (deferral handling) never appear.
+        - A withheld entry is indistinguishable from a lookup that never happened: pages are always
+          full, cursors skip nothing visible, and no field, header or count reveals it.
+        - When a hold or deferral ends the entry appears with its original time; entries delayed by
+          an approved deferral carry `deferred_until`.
+        The citizen's own views (relation `self`) are excluded unless `include_self=true`. The
+        response carries no totals or counts.
       parameters:
         - name: cursor
           in: query
@@ -475,6 +484,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Dispute' }
+        '404':
+          description: |
+            Unknown entry or ticket. Returned identically (status, body shape, headers) for a sequence
+            number that does not exist, belongs to someone else, or is currently withheld (R21).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/me/emergency-card-consent:
     put:
@@ -537,29 +553,30 @@ paths:
       operationId: requestDeferral
       x-ledger: true
       x-purposes: [INV]
+      description: |
+        Request a disclosure deferral (rules/disclosure.yaml), or renew one. The ledger entry for this
+        request attaches the subject with relation `administrative`, so it never appears in the
+        subject's log. The case must be open at source and the requester on the case team.
+        Database rules: case coverage cannot reach back more than 72 hours before the first request;
+        an entry deferral is only possible while the entry is still withheld; each approval lasts at
+        most 90 days; a renewal must be requested while the previous deferral is active; a chain over
+        365 days requires `magistrate_order_ref`. A request not approved within 72 hours lapses.
       parameters:
         - $ref: '#/components/parameters/DeviceId'
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [event_seq, case_ref, reason, expires_at]
-              properties:
-                event_seq: { type: integer, minimum: 1 }
-                case_ref: { type: string }
-                reason: { type: string, minLength: 10, maxLength: 2000 }
-                expires_at:
-                  type: string
-                  format: date-time
-                  description: Capped at the configured maximum (default 90 days); renewal needs a new approval.
+            schema: { $ref: '#/components/schemas/DeferralRequest' }
       responses:
         '201':
-          description: Deferral pending supervisor approval
+          description: Deferral pending supervisor approval (already withholding until it lapses)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Deferral' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
 
   /v1/deferrals/{deferralId}/approval:
     post:
@@ -587,6 +604,99 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Deferral' }
         '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/deferrals/{deferralId}/release:
+    post:
+      tags: [deferrals]
+      operationId: releaseDeferral
+      x-ledger: true
+      x-purposes: [INV, AUD]
+      description: Early release by the case team (INV) or oversight (AUD). Withheld entries appear at once.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/DeferralId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 2000 }
+      responses:
+        '200':
+          description: Deferral after release
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Deferral' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/protected-identities:
+    post:
+      tags: [deferrals]
+      operationId: designateProtectedIdentity
+      x-ledger: true
+      x-purposes: [INV]
+      description: |
+        A supervisor designates an officer (for example undercover) whose badge and unit are never
+        shown in any citizen-facing view or driver receipt. Oversight sees and must acknowledge it.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [badge, reason]
+              properties:
+                badge: { type: string }
+                reason: { type: string, minLength: 10, maxLength: 2000 }
+                ends_at: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Designation recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProtectedIdentity' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/oversight/protected-identities:
+    get:
+      tags: [oversight]
+      operationId: listProtectedIdentities
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: All designations, current and ended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [designations]
+                properties:
+                  designations:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProtectedIdentity' }
+
+  /v1/oversight/protected-identities/{designationId}/acknowledgement:
+    post:
+      tags: [oversight]
+      operationId: acknowledgeProtectedIdentity
+      x-ledger: true
+      x-purposes: [AUD]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: designationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Acknowledged }
 
   /v1/oversight/deferrals:
     get:
@@ -1209,18 +1319,24 @@ components:
         seq: { type: integer }
         occurred_at: { type: string, format: date-time }
         agency: { type: string }
-        unit: { type: string }
-        officer_badge: { type: string }
+        unit:
+          type: string
+          description: Omitted for officers with a protected identity (undercover), permanently
+        officer_badge:
+          type: string
+          description: Omitted for officers with a protected identity (undercover), permanently
         purpose: { $ref: '#/components/schemas/Purpose' }
         purpose_description: { type: string }
-        case_ref: { type: string }
+        reference:
+          type: string
+          description: Incident or case reference; never shown for investigative purposes (INV, WAR)
         request_kind: { type: string }
         decision: { type: string, enum: [allow, partial, deny, error, rate_limited] }
         offline: { type: boolean }
         deferred_until:
           type: string
           format: date-time
-          description: Present only on entries released after an approved deferral
+          description: Present only on entries whose disclosure an approved deferral delayed; the date it ended
 
     AccessLogPage:
       type: object
@@ -1262,20 +1378,67 @@ components:
             name: { type: string }
             phone: { type: string }
 
+    DeferralRequest:
+      type: object
+      required: [scope, case_ref, reason, expires_at]
+      properties:
+        scope: { type: string, enum: [case, entry] }
+        subject: { $ref: '#/components/schemas/Identifier' }
+        event_seq: { type: integer, minimum: 1, description: Entry scope only }
+        case_ref: { type: string, description: Open case or warrant, validated at source }
+        covered_units:
+          type: array
+          description: Case scope; lookups of the subject by these units are covered (e.g. a pretext stop)
+          items: { type: string }
+        coverage_from:
+          type: string
+          format: date-time
+          description: Case scope; at most 72 hours before the request (inherited on renewal)
+        reason: { type: string, minLength: 10, maxLength: 2000 }
+        expires_at: { type: string, format: date-time, description: At most 90 days after the request }
+        renews: { type: string, format: uuid, description: The active deferral being renewed }
+        magistrate_order_ref: { type: string, description: Required once the chain exceeds 365 days }
+      oneOf:
+        - properties: { scope: { const: case } }
+          required: [subject]
+        - properties: { scope: { const: entry } }
+          required: [event_seq]
+
     Deferral:
       type: object
-      required: [id, event_seq, case_ref, status, expires_at]
+      required: [id, scope, case_ref, status, expires_at, lapses_at]
       properties:
         id: { type: string, format: uuid }
+        scope: { type: string, enum: [case, entry] }
         event_seq: { type: integer }
         case_ref: { type: string }
+        covered_units:
+          type: array
+          items: { type: string }
+        coverage_from: { type: string, format: date-time }
         reason: { type: string }
         requested_by_badge: { type: string }
         approved_by_badge: { type: string }
-        status: { type: string, enum: [pending_approval, active, released, rejected] }
+        status: { type: string, enum: [pending_approval, active, released, rejected, lapsed] }
+        lapses_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
+        renews: { type: string, format: uuid }
+        magistrate_order_ref: { type: string }
         oversight_acknowledged_at: { type: string, format: date-time }
         released_at: { type: string, format: date-time }
+        release_reason: { type: string }
+
+    ProtectedIdentity:
+      type: object
+      required: [id, badge, designated_at]
+      properties:
+        id: { type: string, format: uuid }
+        badge: { type: string }
+        reason: { type: string }
+        designated_by_badge: { type: string }
+        designated_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        oversight_acknowledged_at: { type: string, format: date-time }
 
     Alert:
       type: object
@@ -1300,7 +1463,10 @@ components:
         generated_at: { type: string, format: date-time }
         aggregates:
           type: object
-          description: Counts only — by agency, purpose, decision; deferrals; alerts by rule and outcome; disputes
+          description: |
+            Counts only — by agency, purpose, decision; alerts by rule and outcome; disputes. Deferrals
+            appear as national totals only (opened, active, released, lapsed), with any cell under 5
+            suppressed, so a published report cannot reveal a particular investigation (R21).
           additionalProperties: true
         checkpoint_roots:
           type: array

@@ -86,10 +86,17 @@ sections. Everything else in this file is hand-written.
         and fire crews at an active incident. Rejected: medical records at traffic stops.
     D3. Decision: beachhead is e-tickets plus the section 179 demerit ledger.
         Rationale: the law exists, it has never been applied, and the minister has committed.
-    D4. Decision: signature feature is the citizen access log ("who viewed my data").
-        Added in this spec: time-limited disclosure deferral for active investigations,
-        approved by a supervisor and visible to oversight, so the log cannot tip off a
-        suspect. Kelvin to confirm this addition (open question Q6).
+    D4. Decision: signature feature is the citizen access log ("who viewed my data"), with
+        leak-proof, accountable disclosure deferrals so it never tips off a suspect or exposes an
+        undercover officer. Approved by Kelvin on 2 Nov 2026 (Q6 closed), who asked that no
+        investigation be detectable and no cover blown. Design: ADR 0011, rules/disclosure.yaml,
+        citizen.visible_access_events in db/schema.sql (single read path; 72 h provisional hold for
+        INV/WAR; case-scoped deferrals covering the case team's lookups; withheld from everyone on the
+        entry; no retroactive hiding; administrative entries invisible; protected officer identities;
+        references withheld). Accountability kept: second-person approval, 72 h lapse, 90-day
+        approvals, magistrate order beyond 365 days, oversight sees all in real time and can release,
+        disclosure delayed but never cancelled. Verified by db/tests/disclosure_test.sql (25 scenarios).
+        Rejected: excluding investigative lookups from the log altogether; app-level filtering.
     D5. Decision: Rust for the broker, policy engine, audit ledger and offline core; Cedar
         for access policy; PostgreSQL; X-Road as the production exchange layer, with
         X-Road-shaped mock adapters in the demo build. Rejected: rebuilding X-Road.
@@ -123,7 +130,7 @@ sections. Everything else in this file is hand-written.
     <requirement id="R3" priority="must" milestone="M2">The system shall decide access per field group with the Cedar policies in policies/trustline.cedar, including forbid rules that make health data unreachable by every police role under every purpose.</requirement>
     <requirement id="R4" priority="must" milestone="M3">The system shall not store agency master records (licences, vehicles, criminal, court or health records); it shall fetch them at query time through adapter interfaces modelled on X-Road service calls, and shall persist only tickets, the demerit ledger, licence actions, access logs, alerts, consents and disputes.</requirement>
     <requirement id="R5" priority="must" milestone="M2">The system shall append every request decision (allow, partial, deny, error or rate_limited) to an append-only ledger in which each entry is hash-chained to its predecessor, signed with Ed25519 and covered by periodic signed Merkle checkpoints; tampering with any entry shall be detectable by an offline verification command.</requirement>
-    <requirement id="R6" priority="must" milestone="M5">The system shall show each signed-in citizen every access to their data, with time, agency, officer badge number, reason code and case reference, except entries under an approved, time-limited disclosure deferral, which shall appear automatically when the deferral expires.</requirement>
+    <requirement id="R6" priority="must" milestone="M5">The system shall show each signed-in citizen every access to their data, with time, agency, officer badge and reason code, except entries withheld under rules/disclosure.yaml (a 72-hour provisional hold for investigative purposes, and approved, time-limited disclosure deferrals); a withheld entry shall appear automatically, with its original time, when its hold or deferral ends.</requirement>
     <requirement id="R7" priority="must" milestone="M4">The system shall issue electronic tickets under the Motor Vehicles and Road Traffic (Ticketable Offences) Regulations, track payment and court referral, and expose ticket status to the court and Licensing Authority.</requirement>
     <requirement id="R8" priority="must" milestone="M4">The system shall record demerit points on conviction from the versioned schedule in rules/demerit-schedule.yaml, evaluate the section 179 thresholds, and produce proposed licence actions that take effect only after an authorised Licensing Authority officer records a decision.</requirement>
     <requirement id="R9" priority="must" milestone="M3">The system shall mark every warrant or stolen-vehicle match as UNCONFIRMED until a dispatcher confirms or clears it against the source agency, and shall log both the match and the decision.</requirement>
@@ -136,6 +143,8 @@ sections. Everything else in this file is hand-written.
     <requirement id="R16" priority="should" milestone="M5">The system shall let citizens view their own licence, vehicle, ticket, points and court-date record, pay (simulated) or contest a ticket, manage emergency-card consent, and file a dispute against any access-log entry.</requirement>
     <requirement id="R17" priority="must" milestone="M6">The system shall provide web interfaces for officers (installable PWA with QR scan of synthetic demo cards and manual entry), dispatch, the Licensing Authority, citizens, EMS and oversight, usable at 360 px width, with SYNTHETIC and pending-legal-verification banners on every screen.</requirement>
     <requirement id="R18" priority="should" milestone="M4">The system shall show court dates and outcomes for driving matters to authorised roles and to the citizen concerned, read through the courts adapter.</requirement>
+    <requirement id="R21" priority="must" milestone="M5">The system shall make a withheld access entry undetectable by the subject and by every other person attached to it: citizen-facing access entries shall be read only through citizen.visible_access_events in db/schema.sql, which filters before ordering and paging; no citizen-facing response, error, count, notification or published report shall reveal a withheld entry, a deferral or its administration; investigative case references shall never be shown to the subject; and officers with an approved protected identity shall never have their badge or unit shown in any citizen-facing view or driver receipt.</requirement>
+    <requirement id="R22" priority="must" milestone="M5">The system shall keep every disclosure deferral accountable: case- or entry-scoped and tied to a case open at source; requested by an investigator and approved by a different supervisor; lapsing if not approved within 72 hours; at most 90 days per approval; renewable only while active and without a gap; beyond 365 days only with a recorded magistrate's order; releasable early by the case team or oversight; visible to oversight in real time with acknowledgement required; and recorded in the ledger as administrative entries. Protected-identity designations shall likewise be approved by a supervisor, visible to and acknowledged by oversight.</requirement>
     <requirement id="R19" priority="could" milestone="deferred">The system shall verify ISO/IEC 18013-5 mobile driving licences presented by drivers. Not built in M1–M7; the offline crate must not preclude it.</requirement>
     <requirement id="R20" priority="could" milestone="deferred">The system shall produce de-identified road-safety analytics (crash hotspots, offence trends, repeat-offender rates). Not built in M1–M7.</requirement>
   </core_requirements>
@@ -202,6 +211,8 @@ sections. Everything else in this file is hand-written.
     HL10. Never model vendor revenue on fines collected.
     HL11. Never treat values in rules/demerit-schedule.yaml, rules/offences.yaml or rules/retention.yaml as legally verified while verified is false; show the pending-legal-verification banner.
     HL12. Never deploy this build with real data or to third-party hosting; production hosting is the Government of Saint Lucia data centre and is out of scope.
+    HL13. Never read or count a subject's access entries for anything citizen-facing except through citizen.visible_access_events, and never reveal a withheld entry, a deferral or a protected officer's identity through any citizen-facing channel.
+    HL14. Never allow a deferral or protected-identity designation without a second-person approval, a time limit and real-time oversight visibility; never let a deferral hide an entry the subject could already see.
   </hard_limits>
 
   <budget>
@@ -265,11 +276,12 @@ sections. Everything else in this file is hand-written.
     ├── docs/                         — product brief, architecture, data model, API, policy,
     │                                    threat model, privacy, verification, synthetic data, demo, ADRs
     ├── db/schema.sql                 — canonical DDL (migrations generated from it in M1)
+    ├── db/tests/disclosure_test.sql  — database scenarios for leak-proof deferrals (make db-test)
     ├── api/openapi.yaml              — API contract
     ├── policies/                     — Cedar schema, policies, entities, sample requests
     ├── rules/                        — reason codes, field groups, demerit schedule, offences,
     │                                    anomaly rules, retention (configuration, versioned)
-    ├── tools/                        — graph linter, prompt renderer, HEF sync
+    ├── tools/                        — graph generator and linter, prompt renderer, HEF sync, policy matrix
     ├── tasks/                        — todo.md, lessons.md, trace.jsonl
     │   — created during the build —
     ├── Cargo.toml                    — workspace
@@ -408,14 +420,14 @@ sections. Everything else in this file is hand-written.
     <objective>Citizens see their record and every access to it; oversight sees anomalies, deferrals and monthly reports.</objective>
     <tasks>
       <task id="T5.1">Implement the citizen API (/v1/me/record, /v1/me/access-log, disputes, ticket payment) keyed by the citizen's subject hash.</task>
-      <task id="T5.2">Implement disclosure deferrals with supervisor approval, a configured maximum duration, oversight visibility and automatic release.</task>
+      <task id="T5.2">Implement disclosure control per rules/disclosure.yaml with citizen.visible_access_events as the only read path — provisional holds, case- and entry-scoped deferrals, approval, lapse, renewal, the 365-day magistrate threshold, early release, protected identities, administrative ledger entries — plus the API leak suite (AC23) and lifecycle tests (AC24).</task>
       <task id="T5.3">Implement emergency-card consent and EMS access with the incident check, the Ministry of Health adapter call and the citizen log entry.</task>
       <task id="T5.4">Implement trustline-oversight to evaluate rules/anomaly-rules.yaml on new ledger entries and on schedule, with the alerts API and review workflow.</task>
       <task id="T5.5">Implement the monthly transparency report and the ledger verification status endpoint.</task>
     </tasks>
     <verification>
       <check id="V5.1">The persona S8 misuse scenario raises the expected alert.</check>
-      <check id="V5.2">The deferral lifecycle test passes.</check>
+      <check id="V5.2">db/tests/disclosure_test.sql, the deferral lifecycle tests and the API leak suite pass.</check>
       <check id="V5.3">The EMS flow passes and every police role is denied the emergency card.</check>
     </verification>
     <deliverables>citizen endpoints, deferrals, emergency card, oversight engine, alerts, reports.</deliverables>
@@ -425,9 +437,9 @@ sections. Everything else in this file is hand-written.
     <tasks>
       <task id="T6.1">Create the Next.js app (App Router, TypeScript strict, Tailwind) with route groups /officer, /dispatch, /licensing, /citizen, /ems and /oversight, and a persona switcher shown only when DEV_AUTH is on.</task>
       <task id="T6.2">Build the officer PWA with QR scan of synthetic demo cards, manual entry, reason-code picker, status card, ticket issue, offline indicator and driver receipt QR.</task>
-      <task id="T6.3">Build the citizen portal with My Record, access log and deferral notice, disputes, emergency-card consent and simulated payment.</task>
+      <task id="T6.3">Build the citizen portal with My Record, the access log (showing deferred_until on released entries and never any sign of a withheld one), disputes, emergency-card consent and simulated payment.</task>
       <task id="T6.4">Build the licensing console (proposed-action queue and decisions) and the dispatch console (hit decisions).</task>
-      <task id="T6.5">Build the oversight console (alerts, deferrals, ledger status, monthly report) and the SYNTHETIC and pending-legal-verification banners on every screen.</task>
+      <task id="T6.5">Build the oversight console (alerts, deferrals with release, protected-identity designations, ledger status, monthly report) and the SYNTHETIC and pending-legal-verification banners on every screen.</task>
     </tasks>
     <verification>
       <check id="V6.1">The Playwright demo-flow test passes.</check>
@@ -464,7 +476,7 @@ sections. Everything else in this file is hand-written.
     <criterion id="AC4" verifies="R2,R3">An investigator query for criminal_record without a case reference is denied; with a valid open case reference it is allowed and the ledger entry carries the case reference.</criterion>
     <criterion id="AC5" verifies="R5">`trustline-cli ledger verify` passes on an untouched ledger and, after any single entry is modified, deleted or reordered (via superuser in a test), fails and names the first bad sequence number; UPDATE and DELETE by the application role are rejected.</criterion>
     <criterion id="AC6" verifies="R5">In the end-to-end suite, the number of ledger entries equals the number of ledger-scoped API requests (x-ledger: true) plus the number of synced offline checks (x-ledger: per_item), across allow, partial, deny, error and rate_limited.</criterion>
-    <criterion id="AC7" verifies="R6">Persona S8 sees each access to their data within 60 s, with time, agency, badge, reason code and case reference; an entry under an approved deferral is hidden until expiry and then appears; creating a deferral without supervisor approval fails, and every deferral is visible in oversight.</criterion>
+    <criterion id="AC7" verifies="R6">Persona S8 sees each non-investigative access to their data within 60 s, with time, agency, badge and reason code; an INV lookup without a deferral appears after the 72-hour hold with its original time; entries covered by an approved deferral appear automatically when it ends, marked with deferred_until.</criterion>
     <criterion id="AC8" verifies="R7,R8">Paying a ticket for an offence mapped to Schedule 2 paragraph 2(e) (exceeding the speed limit by 20 mph or more) records the number of points set in rules/demerit-schedule.yaml, dated the conviction date, with the ticket linked.</criterion>
     <criterion id="AC9" verifies="R8">Demerit engine tests pass for every row of the section 179 test table in docs/08: recording on conviction, appeal suspension and reinstatement, same-incident rule, 3-year expiry, 11–13 notice, 14–17 interview, ≥10 in 1 year 6-month suspension, ≥18 over 1–2 years 1-year suspension, clearance after a suspension of 3+ months, and concurrent suspensions.</criterion>
     <criterion id="AC10" verifies="R8">No licence action becomes effective without a decision event by a licensing_officer; after confirmation, the roadside card for that driver shows SUSPENDED within 60 s.</criterion>
@@ -480,6 +492,8 @@ sections. Everything else in this file is hand-written.
     <criterion id="AC20" verifies="R16">Persona S2 sees their own tickets, points, licence and vehicle status; filing a dispute creates an item in the oversight queue linked to the ledger entry.</criterion>
     <criterion id="AC21" verifies="R18">A licensing_officer and the citizen concerned see the next court date for a referred ticket; a traffic officer at a stop sees only court_date_pending = true.</criterion>
     <criterion id="AC22" verifies="R17">Officer and citizen screens pass automated axe accessibility checks with no serious or critical violations, and the officer status card renders in under 3 s under Playwright 3G throttling.</criterion>
+    <criterion id="AC23" verifies="R21">The database scenario suite db/tests/disclosure_test.sql passes (DF1-DF25), and the API leak suite passes for persona S8 against control persona S11: while a case deferral covers S8's investigative lookups, every citizen-facing response for S8 (access log at every page size from 1 to 25 with cursors and include_self both ways, My Record, dispute attempts against the withheld sequence numbers, and the public monthly report) equals S11's response apart from sequence numbers, request ids and generation times; a dispute against a withheld entry returns the same 404 as a nonexistent one; the vehicle co-owner sees nothing; and lookups by protected officer UC-311 never show a badge or unit to the citizen, before or after release.</criterion>
+    <criterion id="AC24" verifies="R22">Deferral lifecycle tests pass at API and database level: self-approval refused; an unapproved request lapses after 72 hours; approval over 90 days refused; renewal after expiry refused; retroactive coverage beyond the hold refused; a chain over 365 days refused without a magistrate order and accepted with one; early release by oversight works; every deferral and protected-identity designation is listed in the oversight console within 60 s; every deferral action writes a ledger entry with relation administrative.</criterion>
   </acceptance_criteria>
   <quality_gates>
     <gate name="Rust">cargo fmt --check; cargo clippy --workspace --all-targets -- -D warnings; cargo test --workspace</gate>
@@ -519,7 +533,7 @@ sections. Everything else in this file is hand-written.
 
 <session_context>
   Planned in a Claude conversation on 2 Nov 2026 (assessment doc, then this pack).
-  Rejected alternatives: central national database; health records for police; automatic
+  Rejected alternatives: central national database; hiding investigative lookups from citizens altogether; health records for police; automatic
   licence suspension; plate-recognition ticketing before enabling law; Supabase/Vercel
   production hosting; vendor share of fines; rebuilding X-Road.
   Open questions (also in docs/01-product-brief.md):
@@ -528,16 +542,16 @@ sections. Everything else in this file is hand-written.
     Q3. Which established integrator for World Bank-funded bids?
     Q4. Keep the name TRUSTLINE?
     Q5. Who funds Phase 0 and the demo?
-    Q6. Confirm the disclosure-deferral design (D4).
+    Q6. Closed 2 Nov 2026 — deferral design approved (D4); durations and legal basis go to counsel.
     Q7. Digital licence on PWEV credentials or the government's planned secure wallet?
 </session_context>
 
 <hef_state>
-  <completed>none — specification pack only</completed>
+  <completed>none — specification pack only (iteration 2: disclosure deferrals approved and specified)</completed>
   <current>awaiting decision to start the build (graph node plan_build)</current>
   <blocked>none for the build; pilot blocked on Q1–Q3 and the dependencies above</blocked>
   <next>Run MASTER_PROMPT.md in Claude Code inside the trustline repository</next>
-  <iteration>1</iteration>
+  <iteration>2</iteration>
 </hef_state>
 
 </harness_engineering_format>

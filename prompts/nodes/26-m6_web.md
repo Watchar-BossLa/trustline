@@ -11,9 +11,9 @@ orchestrator in MASTER_PROMPT.md load it. Replace {run_id} and {attempt}.
   <item id="R17">[must] The system shall provide web interfaces for officers (installable PWA with QR scan of synthetic demo cards and manual entry), dispatch, the Licensing Authority, citizens, EMS and oversight, usable at 360 px width, with SYNTHETIC and pending-legal-verification banners on every screen.</item>
   <item id="T6.1">Create the Next.js app (App Router, TypeScript strict, Tailwind) with route groups /officer, /dispatch, /licensing, /citizen, /ems and /oversight, and a persona switcher shown only when DEV_AUTH is on.</item>
   <item id="T6.2">Build the officer PWA with QR scan of synthetic demo cards, manual entry, reason-code picker, status card, ticket issue, offline indicator and driver receipt QR.</item>
-  <item id="T6.3">Build the citizen portal with My Record, access log and deferral notice, disputes, emergency-card consent and simulated payment.</item>
+  <item id="T6.3">Build the citizen portal with My Record, the access log (showing deferred_until on released entries and never any sign of a withheld one), disputes, emergency-card consent and simulated payment.</item>
   <item id="T6.4">Build the licensing console (proposed-action queue and decisions) and the dispatch console (hit decisions).</item>
-  <item id="T6.5">Build the oversight console (alerts, deferrals, ledger status, monthly report) and the SYNTHETIC and pending-legal-verification banners on every screen.</item>
+  <item id="T6.5">Build the oversight console (alerts, deferrals with release, protected-identity designations, ledger status, monthly report) and the SYNTHETIC and pending-legal-verification banners on every screen.</item>
   <item id="AC17">From a fresh clone, `make demo` brings the system up with seeded data in under 10 minutes and the Playwright demo-flow test (docs/10 steps 1–8) passes.</item>
   <item id="AC22">Officer and citizen screens pass automated axe accessibility checks with no serious or critical violations, and the officer status card renders in under 3 s under Playwright 3G throttling.</item>
 </implements>
@@ -43,6 +43,8 @@ orchestrator in MASTER_PROMPT.md load it. Replace {run_id} and {attempt}.
   - HL10: Never model vendor revenue on fines collected.
   - HL11: Never treat values in rules/demerit-schedule.yaml, rules/offences.yaml or rules/retention.yaml as legally verified while verified is false; show the pending-legal-verification banner.
   - HL12: Never deploy this build with real data or to third-party hosting; production hosting is the Government of Saint Lucia data centre and is out of scope.
+  - HL13: Never read or count a subject's access entries for anything citizen-facing except through citizen.visible_access_events, and never reveal a withheld entry, a deferral or a protected officer's identity through any citizen-facing channel.
+  - HL14: Never allow a deferral or protected-identity designation without a second-person approval, a time limit and real-time oversight visibility; never let a deferral hide an entry the subject could already see.
   - Scope lock: touch only apps/web/ plus their tests and route wiring in crates/api/src/main.rs and crates/api/src/routes/mod.rs. Anything else needed goes in <exit code="needs_input">.
   - Do no work that belongs to another node. Treat spec/, graphs/, prompts/, policies/trustline.cedar, policies/trustline.cedarschema, rules/, db/schema.sql and api/openapi.yaml as the contract: if one of them is wrong, exit needs_input with the proposed change instead of editing it.
 </constraints>

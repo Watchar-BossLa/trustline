@@ -40,6 +40,16 @@ rules:
     description: A unit requests an unusual number of disclosure deferrals
     match: { request_kinds: [deferral_request], same: [actor_unit] }
     threshold: { count: 10, window: 30d }
+  - code: deferral_long_running
+    severity: medium
+    description: A deferral chain has withheld a subject's lookups for more than 180 days (magistrate order needed beyond 365)
+    match: { request_kinds: [deferral_request, deferral_renewal], chain_days_over: 180 }
+    threshold: { count: 1 }
+  - code: protected_identity_change
+    severity: info
+    description: Every protected-identity designation or end, for oversight acknowledgement
+    match: { request_kinds: [protected_identity_designation] }
+    threshold: { count: 1 }
   - code: late_offline_sync
     severity: low
     description: Offline checks synced long after they were made

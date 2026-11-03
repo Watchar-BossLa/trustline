@@ -15,7 +15,7 @@
 | Secrets | `gitleaks detect --redact` (full history) | No findings |
 | Policy | `cedar validate --schema policies/trustline.cedarschema --policies policies/trustline.cedar` · `python3 tools/policy_matrix.py` | Valid; matrix matches intent |
 | API | OpenAPI lint · response contract tests | Valid; all responses conform |
-| Database | migrations apply to empty DB; `pg_dump --schema-only` equals `db/schema.sql` load | No drift |
+| Database | migrations apply to empty DB; `pg_dump --schema-only` equals `db/schema.sql` load; `make db-test` runs `db/tests/disclosure_test.sql` | No drift; ALL DISCLOSURE TESTS PASSED |
 | Graph | `python3 tools/graph_lint.py` | OK |
 | Web | `pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test` | All pass |
 | E2E | `pnpm -C apps/web test:e2e` (Playwright demo flow + axe) | Pass; no serious/critical axe violations |
@@ -30,7 +30,7 @@
 | AC4 | `crates/api/tests/investigations.rs` | Case reference required; carried to ledger |
 | AC5 | `crates/ledger/tests/tamper.rs`; `crates/api/tests/schema.rs` | Modify, delete, reorder; app-role privileges |
 | AC6 | `crates/api/tests/ledger_coverage.rs` | Counts across all decisions |
-| AC7 | `crates/api/tests/citizen.rs` | Visibility within 60 s; deferral lifecycle |
+| AC7 | `crates/api/tests/citizen.rs` | Visibility within 60 s; hold; release with deferred_until |
 | AC8 | `crates/api/tests/flows.rs` | SPEED-20 → paragraph 2(e) points |
 | AC9 | `crates/demerit/tests/section_179.rs` | Table below |
 | AC10 | `crates/api/tests/flows.rs`; DB trigger test | No effect before decision; SUSPENDED within 60 s after |
@@ -46,6 +46,8 @@
 | AC20 | `crates/api/tests/citizen.rs` | Own record; dispute to oversight |
 | AC21 | `crates/api/tests/court.rs` | Licensing and citizen see date; roadside sees flag only |
 | AC22 | `apps/web/e2e/a11y.spec.ts`; `apps/web/e2e/perf.spec.ts` | axe; 3G throttling < 3 s |
+| AC23 | `db/tests/disclosure_test.sql` (`make db-test`); `crates/api/tests/disclosure_leak.rs` | DF1–DF25; S8 vs control S11 response-by-response equality; identical 404s; co-owner; protected officer |
+| AC24 | `db/tests/disclosure_test.sql`; `crates/api/tests/deferral_lifecycle.rs` | Approval, lapse, 90-day and 365-day limits, renewal continuity, early release, oversight listing, administrative entries |
 
 ## Section 179 and 107 test table (AC9, AC14)
 
@@ -83,6 +85,26 @@ schedule updates expectations automatically except where a row names a number fo
 Property tests: points in force are never negative; adding a conviction never lowers points in
 force before expiry; evaluation is deterministic for the same history and schedule; expired
 points never trigger an action.
+
+## Disclosure-control scenarios (AC23, AC24) — `db/tests/disclosure_test.sql`
+
+Passed on 2 Nov 2026 against PostgreSQL 16 with the schema in this pack.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| DF1–DF2 | INV lookups during the 72 h hold | Withheld; suspect's log identical to a control person's |
+| DF3 | Supervisor field set to the requester | Refused |
+| DF4–DF6 | Active case deferral | INV lookups and the case unit's pretext stop withheld; uninvolved stop visible; logs identical with and without self views |
+| DF7 | Vehicle co-owner | Sees nothing while protected |
+| DF8 | Paging with limit 1 | Walks only visible entries, full pages |
+| DF9 | Deferral request entry | Never appears, even after release |
+| DF10–DF12 | Retroactive coverage; deferring a visible entry; approval over 90 days | Refused |
+| DF13–DF14 | Renewal while active; renewal after expiry | Continuous withholding; late renewal refused |
+| DF15 | Chain beyond 365 days | Refused without a magistrate order; accepted with one |
+| DF16–DF20 | Early release by oversight | Entries appear with original times and deferred_until; protected officer shown as agency only; case number withheld; co-owner now sees it |
+| DF21–DF23 | Unapproved request | Withholds until it lapses at 72 h; no deferred_until marker |
+| DF24 | Rejected request | Stops withholding once the hold ends |
+| DF25 | Delete a withheld entry | Refused (ledger is append-only) |
 
 ## Performance and resilience
 

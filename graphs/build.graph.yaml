@@ -288,6 +288,7 @@ nodes:
     - Migrations reproduce db/schema.sql exactly (diff of pg_dump --schema-only is empty)
     - App role cannot UPDATE or DELETE ledger.access_event
     - Schema test lists every table and fails if a master-record table appears
+    - db/tests/disclosure_test.sql passes against the migrated database (DF1-DF25)
   context:
     mode: flat
     include:
@@ -297,6 +298,7 @@ nodes:
     - tasks/lessons.md
     - db/schema.sql
     - docs/03-data-model.md
+    - db/tests/disclosure_test.sql
   reasoning:
     mode: direct
   budget:
@@ -311,6 +313,7 @@ nodes:
   files_touched:
   - db/migrations/
   - crates/api/tests/schema.rs
+  - Makefile
   exits:
   - success
   - fail
@@ -408,7 +411,7 @@ nodes:
     - tasks/lessons.md
   reasoning:
     mode: direct
-  command: make verify && make db && make seed && cargo test -p trustline-api --test schema
+  command: make verify && make db && make seed && cargo test -p trustline-api --test schema && make db-test
   budget:
     max_input_tokens: 80000
     max_output_tokens: 8000
@@ -1241,17 +1244,22 @@ nodes:
   - blocked
 - id: m5_citizen
   kind: prompt
-  objective: Implement the citizen record, access log, deferrals, disputes and emergency card.
+  objective: Implement the citizen record, the access log with leak-proof disclosure control, deferrals, protected
+    identities, disputes and the emergency card.
   implements:
   - R6
   - R15
   - R16
+  - R21
+  - R22
   - T5.1
   - T5.2
   - T5.3
   - AC7
   - AC16
   - AC20
+  - AC23
+  - AC24
   critical: false
   inputs:
     plan:
@@ -1270,7 +1278,12 @@ nodes:
     - verify_m4 exited success
     postconditions:
     - Citizen endpoints only ever resolve the caller's own subject hash
-    - Deferrals need supervisor approval, cap at the configured maximum and release automatically
+    - Every citizen-facing access-log read goes through citizen.visible_access_events; a test fails the build if
+      any other query touches ledger.access_event_subject for a citizen route
+    - The AC23 leak suite compares persona S8 with control persona S11 response by response and they match apart
+      from sequence numbers, request ids and generation times
+    - Disputes against withheld, foreign and nonexistent sequence numbers return byte-identical 404 bodies and headers
+    - Deferral and designation actions write ledger entries with relation administrative
     - EMS access is denied without an active incident or consent
   context:
     mode: flat
@@ -1282,6 +1295,9 @@ nodes:
     - api/openapi.yaml
     - docs/05-access-policy.md
     - docs/07-privacy-and-legal-basis.md
+    - rules/disclosure.yaml
+    - db/tests/disclosure_test.sql
+    - docs/adr/0011-leak-proof-disclosure-deferrals.md
   reasoning:
     mode: direct
   budget:
@@ -1297,6 +1313,9 @@ nodes:
   - crates/api/src/routes/me.rs
   - crates/api/src/routes/ems.rs
   - crates/api/src/routes/deferrals.rs
+  - crates/api/src/routes/protected_identities.rs
+  - crates/api/tests/disclosure_leak.rs
+  - crates/api/tests/deferral_lifecycle.rs
   exits:
   - success
   - fail
@@ -1364,7 +1383,7 @@ nodes:
   - blocked
 - id: verify_m5
   kind: verifier
-  objective: Confirm citizen transparency and oversight.
+  objective: Confirm citizen transparency, leak-proof deferrals and oversight.
   implements:
   - V5.1
   - V5.2
@@ -1373,6 +1392,8 @@ nodes:
   - AC12
   - AC16
   - AC20
+  - AC23
+  - AC24
   critical: false
   inputs:
     plan:
@@ -1390,7 +1411,7 @@ nodes:
     - All build nodes of this milestone exited success
     postconditions:
     - V5.1 S8 misuse alert raised
-    - V5.2 deferral lifecycle passes
+    - V5.2 disclosure_test.sql, deferral lifecycle and API leak suite pass
     - V5.3 EMS flow and police denial pass
   context:
     mode: flat
@@ -1400,7 +1421,8 @@ nodes:
     - tasks/lessons.md
   reasoning:
     mode: direct
-  command: cargo test -p trustline-oversight && cargo test -p trustline-api --test citizen --test oversight
+  command: cargo test -p trustline-oversight && cargo test -p trustline-api --test citizen --test oversight --test
+    disclosure_leak --test deferral_lifecycle && make db-test
   budget:
     max_input_tokens: 80000
     max_output_tokens: 8000

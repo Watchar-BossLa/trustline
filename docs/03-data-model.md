@@ -1,7 +1,8 @@
 # 03 — Data model
 
 `db/schema.sql` is canonical (PostgreSQL 16; verified to load cleanly, with the append-only and
-human-decision triggers tested on 2 Nov 2026). This document explains it. TRUSTLINE stores **no
+human-decision triggers tested, and the disclosure scenarios in `db/tests/disclosure_test.sql`
+passing, on 2 Nov 2026). This document explains it. TRUSTLINE stores **no
 agency master records**: no licence register, vehicle register, criminal, court or health
 records. It stores only what it creates.
 
@@ -20,7 +21,8 @@ records. It stores only what it creates.
 | ledger | `access_event_subject` | Subject keys attached to each entry, with relation | Subject keys |
 | ledger | `checkpoint` | Signed Merkle roots over entry ranges | — |
 | ledger | `signing_key` | Public keys and status | — |
-| ledger | `disclosure_deferral` | Time-limited, approved deferrals of citizen visibility | Subject key |
+| ledger | `disclosure_deferral` | Case- or entry-scoped deferrals of citizen visibility: approval, lapse, renewal chain, magistrate order, release | Subject key |
+| core | `protected_identity_designation` | Officers whose badge and unit are never shown to citizens | — |
 | tickets | `offence` | Offence catalogue from rules/offences.yaml | — |
 | tickets | `ticket` | Tickets issued | Subject key; identifiers envelope-encrypted |
 | tickets | `payment` | Payments (simulated in this build) | — |
@@ -67,7 +69,13 @@ erDiagram
 | A licence action exists only for a proposal confirmed by the same officer (HL5) | `demerit.require_confirmed_proposal()` trigger |
 | A decided proposal records who and when | CHECK on `proposed_action` |
 | A deferral cannot be self-approved | CHECK `approved_by <> requested_by` |
-| An active deferral has an approver | CHECK on `disclosure_deferral` |
+| An active or released deferral has an approver and approval time | CHECK on `disclosure_deferral` |
+| Pending requests lapse within 72 h; approvals last at most 90 days | CHECKs on `lapses_at`, `expires_at` |
+| A chain beyond 365 days needs a magistrate's order | CHECK on `expires_at`, `coverage_from`, `magistrate_order_ref` |
+| No deferral can hide an entry the subject could already see | CHECK on `coverage_from`; trigger `ledger.check_deferral_insert()` |
+| Renewals continue an active deferral with the same subject, case, scope and coverage | trigger `ledger.check_deferral_insert()` |
+| Citizen logs never show withheld or administrative entries, protected badges or investigative case numbers | function `citizen.visible_access_events()` — the only read path (HL13) |
+| A protected officer cannot designate themself | CHECK `designated_by <> officer_id` |
 | Hits record a decider once decided | CHECK on `core.hit` |
 | Offline entries carry the device time | CHECK on `access_event` |
 | Hash, signature and root sizes are exact | `octet_length` CHECKs |

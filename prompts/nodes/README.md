@@ -25,9 +25,9 @@ Rendered from graphs/build.graph.yaml and spec/registry.yaml by tools/render_nod
 | 19 | [m4_demerit](19-m4_demerit.md) | prompt | R8, T4.4, T4.5, T4.6, AC8, AC9, AC10 |
 | 20 | [verify_m4](20-verify_m4.md) | verifier | V4.1, V4.2, V4.3, AC8, AC9, AC10, AC14, AC21 |
 | 21 | [fix_m4](21-fix_m4.md) | prompt | M4 |
-| 22 | [m5_citizen](22-m5_citizen.md) | prompt | R6, R15, R16, T5.1, T5.2, T5.3, AC7, AC16, AC20 |
+| 22 | [m5_citizen](22-m5_citizen.md) | prompt | R6, R15, R16, R21, R22, T5.1, T5.2, T5.3, AC7, AC16, AC20, AC23, AC24 |
 | 23 | [m5_oversight](23-m5_oversight.md) | prompt | R10, T5.4, T5.5, AC12 |
-| 24 | [verify_m5](24-verify_m5.md) | verifier | V5.1, V5.2, V5.3, AC7, AC12, AC16, AC20 |
+| 24 | [verify_m5](24-verify_m5.md) | verifier | V5.1, V5.2, V5.3, AC7, AC12, AC16, AC20, AC23, AC24 |
 | 25 | [fix_m5](25-fix_m5.md) | prompt | M5 |
 | 26 | [m6_web](26-m6_web.md) | prompt | R17, T6.1, T6.2, T6.3, T6.4, T6.5, AC17, AC22 |
 | 27 | [verify_m6](27-verify_m6.md) | verifier | V6.1, V6.2, V6.3, AC17, AC22 |

@@ -67,7 +67,10 @@ forbid (
     Trustline::Action::"DecideLicenceAction",
     Trustline::Action::"RequestDeferral",
     Trustline::Action::"ApproveDeferral",
+    Trustline::Action::"ReleaseDeferral",
     Trustline::Action::"AcknowledgeDeferral",
+    Trustline::Action::"DesignateProtectedIdentity",
+    Trustline::Action::"AcknowledgeDesignation",
     Trustline::Action::"ReviewAlert"
   ],
   resource
@@ -290,6 +293,8 @@ permit (
 when { principal.roles.contains("licensing_officer") && context.purpose == "LIC" };
 
 @id("O4-request-deferral")
+// Case- or entry-scoped deferral, or a renewal. The API also checks the case is open at source
+// and that the requester belongs to the case team; the database enforces durations and continuity.
 permit (
   principal is Trustline::Officer,
   action == Trustline::Action::"RequestDeferral",
@@ -298,6 +303,7 @@ permit (
 when { principal.roles.contains("investigator") && context.purpose == "INV" };
 
 @id("O5-approve-deferral")
+// Approve or reject. Never the requester (database CHECK approved_by <> requested_by).
 permit (
   principal is Trustline::Officer,
   action == Trustline::Action::"ApproveDeferral",
@@ -305,18 +311,51 @@ permit (
 )
 when { principal.roles.contains("supervisor") && context.purpose == "INV" };
 
-@id("O6-oversight-acknowledge-and-review")
+@id("O5b-release-deferral-early")
+// Early release only ever increases transparency, so the case team and oversight may do it.
 permit (
   principal is Trustline::Officer,
-  action in [Trustline::Action::"AcknowledgeDeferral", Trustline::Action::"ReviewAlert"],
-  resource
+  action == Trustline::Action::"ReleaseDeferral",
+  resource == Trustline::Capability::"deferrals"
 )
 when
 {
-  principal.roles.contains("oversight_analyst") &&
-  context.purpose == "AUD" &&
-  [Trustline::Capability::"deferrals", Trustline::Capability::"alerts"].contains(resource)
+  (principal.roles.containsAny(["investigator", "supervisor"]) && context.purpose == "INV") ||
+  (principal.roles.contains("oversight_analyst") && context.purpose == "AUD")
 };
+
+@id("O5c-designate-protected-identity")
+// Undercover or protected officers: badge and unit never shown to citizens. Oversight must acknowledge.
+permit (
+  principal is Trustline::Officer,
+  action == Trustline::Action::"DesignateProtectedIdentity",
+  resource == Trustline::Capability::"designations"
+)
+when { principal.roles.contains("supervisor") && context.purpose == "INV" };
+
+@id("O6-oversight-acknowledge-deferral")
+permit (
+  principal is Trustline::Officer,
+  action == Trustline::Action::"AcknowledgeDeferral",
+  resource == Trustline::Capability::"deferrals"
+)
+when { principal.roles.contains("oversight_analyst") && context.purpose == "AUD" };
+
+@id("O6b-oversight-acknowledge-designation")
+permit (
+  principal is Trustline::Officer,
+  action == Trustline::Action::"AcknowledgeDesignation",
+  resource == Trustline::Capability::"designations"
+)
+when { principal.roles.contains("oversight_analyst") && context.purpose == "AUD" };
+
+@id("O6c-oversight-review-alert")
+permit (
+  principal is Trustline::Officer,
+  action == Trustline::Action::"ReviewAlert",
+  resource == Trustline::Capability::"alerts"
+)
+when { principal.roles.contains("oversight_analyst") && context.purpose == "AUD" };
 
 @id("O7-court-records")
 permit (

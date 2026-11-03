@@ -83,12 +83,16 @@ HL5 no licence action without a recorded officer decision · HL6 synthetic data 
 HL7 no facial recognition, profiling, risk scores or plate-recognition ticketing ·
 HL8 no UPDATE or DELETE on ledger rows · HL9 no committed secrets, no disabled TLS verification ·
 HL10 no revenue modelled on fines · HL11 unverified legal values stay flagged with the banner ·
-HL12 no deployment with real data or to third-party hosting.
+HL12 no deployment with real data or to third-party hosting ·
+HL13 citizen access entries only via citizen.visible_access_events; nothing citizen-facing may reveal a withheld entry, a deferral or a protected officer ·
+HL14 no deferral or protected identity without second-person approval, a time limit and oversight; no deferral may hide an entry already visible.
 Full text: spec/registry.yaml → hard_limits.
 </hard_limits>
 
 <quality_bar>
-- Every acceptance criterion AC1–AC22 has at least one automated test whose name contains its id.
+- Every acceptance criterion AC1–AC24 has at least one automated test whose name contains its id.
+- db/tests/disclosure_test.sql passes, and the AC23 leak suite shows a protected suspect's responses
+  are indistinguishable from a control person's.
 - make verify is green before any milestone verifier exits success.
 - No test is weakened, skipped or deleted to pass. No TODO left in code paths that handle
   identifiers, policy decisions, ledger writes or licence actions.

@@ -1,0 +1,70 @@
+# Disclosure control for the citizen access log ("who viewed my data").
+# Approved in principle by Kelvin Wilson Antoine on 2 Nov 2026 (decision D4, question Q6 closed).
+#
+# LEGAL STATUS: NOT VERIFIED. Durations, the magistrate threshold and badge masking are design
+# values for Saint Lucian counsel and the Data Protection Commissioner to confirm (HL11).
+#
+# Two goals, both mandatory:
+#   1. While an investigation is protected, the subject cannot detect it through ANY citizen-facing
+#      channel (R21). A withheld entry must be indistinguishable from a lookup that never happened.
+#   2. Every deferral stays accountable: approved by someone other than the requester, time-limited,
+#      visible to oversight in real time, and disclosed to the subject when it ends (R22).
+#
+# The canonical implementation of rule 1 is the SQL function citizen.visible_access_events in
+# db/schema.sql. The API must call it and must not filter or count access entries any other way.
+version: 1.0.0
+verified: false
+
+provisional_hold:
+  # Investigative lookups are withheld automatically for a short period, so an investigator has time
+  # to request a deferral before anything reaches the subject's log.
+  purposes: [INV, WAR]
+  hours: 72
+
+deferral:
+  scopes:
+    case: >
+      Preferred. Covers every lookup of the named subject from the deferral's coverage start until it
+      ends, where the lookup cites the case (case_ref or warrant_ref) or was made by an officer in one
+      of the deferral's covered units (so a pretext traffic stop by the case team is also covered).
+      Lookups by uninvolved officers stay visible.
+    entry: Covers one ledger entry.
+  requires_open_case_at_source: true
+  requested_by_roles: [investigator]
+  approved_by_roles: [supervisor]          # never the requester (database CHECK)
+  pending_lapses_after_hours: 72           # an unapproved request stops withholding after 72 h
+  max_days_per_approval: 90                # database backstop: expires_at <= created_at + 90 days
+  renewal: new request referencing the previous deferral, approved afresh; coverage start is inherited so no entry surfaces at the renewal boundary
+  cumulative_cap_days: 365                 # beyond this, a magistrate's order reference is mandatory (database CHECK)
+  early_release_by: [requesting investigator, supervisor, oversight_analyst]
+  oversight:
+    sees_every_deferral: real_time
+    acknowledgement_due_working_days: 10
+    can_release: true
+
+citizen_view:
+  # What the subject sees once an entry is visible (after any hold or deferral ends).
+  show_original_timestamp: true
+  mark_delayed_disclosure: true            # deferred_until is shown on entries an approved deferral delayed
+  withhold_reference_for_purposes: [INV, WAR]   # case and warrant numbers never shown to the subject
+  protected_identity_officers: agency_only      # no badge, no unit — ever, even after release
+
+no_trace_requirements:                      # each one is tested by the AC23 suite
+  - Withholding happens inside the database query, before ordering, paging and limits; page sizes and cursors never reveal a hidden row.
+  - No citizen-facing response contains a count, total, sequence range or "last updated" value computed from unfiltered entries.
+  - Any citizen request that names a withheld entry (dispute, detail view) gets the same 404 Problem as a sequence number that does not exist or belongs to someone else.
+  - Deferral administration (request, approval, renewal, release, acknowledgement) is recorded in the ledger with subject relation `administrative`, which never appears in a citizen log.
+  - No notification (email, SMS, push, in-app badge) is sent for a withheld entry; released entries notify like any new entry.
+  - The roadside status card has no "under investigation" field; investigations are not a field group.
+  - Published monthly reports show deferral counts nationally only, with cells under 5 suppressed; per-unit detail is for oversight only.
+  - Application logs, traces and metrics carry no subject key or deferral id together with a citizen request.
+  - A withheld entry is hidden from every person attached to it (for example a vehicle's co-owner), not only the named subject.
+  - Replies to citizens (dispute resolutions, support messages) never mention a withheld entry or a deferral while it is in force.
+  - Pilot: deferral status is passed to source agencies (X-Road) so an agency's own audit or self-service portal cannot disclose the lookup either.
+
+protected_identity:
+  # Officers whose identity must never reach a subject (undercover, protected units).
+  designated_by_roles: [supervisor]
+  oversight_acknowledgement: required
+  effect: The officer's badge and unit are omitted from every citizen-facing view and driver receipt; the ledger keeps the full identity and oversight sees it.
+  snapshot: The designation in force when an entry is written is recorded on the entry; masking applies if the entry was protected OR a designation is in force now.

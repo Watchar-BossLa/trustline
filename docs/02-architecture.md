@@ -60,7 +60,9 @@ received no other call.
   `NIC`, `DL` or `PLATE`. Normalisation: uppercase, strip spaces and hyphens.
 - Every ledger entry is attributed to the **person's NIC key**: licence lookups resolve to the
   holder's NIC; plate lookups record the plate key as `primary` and each registered owner's NIC
-  key as `vehicle_owner`. The citizen access log is then one indexed query on the NIC key.
+  key as `vehicle_owner`. Deferral and designation handling attaches the subject with relation
+  `administrative`, which no citizen log ever shows. The citizen access log is read only through
+  `citizen.visible_access_events` (§13).
 - The pepper lives in the key store (`.local/` in development; HSM in the pilot) and rotates with
   a version prefix (`k1:`); old keys are kept for lookup.
 - Tickets are legal records: their identifiers are stored envelope-encrypted
@@ -207,6 +209,32 @@ period's checkpoint roots.
 | Citizen access-log reads | 60 per hour |
 
 Exceeding a limit returns 429 with `Retry-After` and writes a `rate_limited` ledger entry.
+
+## 12a. Disclosure control (ADR 0011, rules/disclosure.yaml)
+
+```mermaid
+stateDiagram-v2
+    [*] --> on_hold: INV/WAR lookup written
+    on_hold --> visible: 72 h pass, no deferral
+    on_hold --> withheld: deferral requested (pending)
+    withheld --> withheld: approved / renewed while active
+    withheld --> visible: lapsed (72 h unapproved) or rejected
+    withheld --> visible_marked: expired or released early
+    visible --> [*]
+    visible_marked --> [*]
+```
+
+- **Single read path.** `citizen.visible_access_events(subject, now, hold, hold_purposes,
+  include_self, before_seq, limit)` in `db/schema.sql` filters before ordering and paging. Nothing
+  else may read access entries for a citizen-facing response (HL13); a test enforces it.
+- **Coverage.** A case deferral covers the subject's lookups that cite the case or were made by
+  the covered units, from `coverage_from` (at most 72 h before the first request, inherited by
+  renewals). Covered entries are withheld from every person attached to them.
+- **Never vanish.** Database rules stop any deferral from hiding an entry the subject could
+  already see (DF10, DF11, DF14).
+- **After release** entries appear with their original time and `deferred_until`; case and warrant
+  numbers are never shown; protected officers appear as their agency only.
+- **Verified:** `db/tests/disclosure_test.sql` — 25 scenarios including suspect-vs-control equality.
 
 ## 12. Runtime topology
 

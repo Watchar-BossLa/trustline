@@ -4,7 +4,8 @@ Access is decided per **field group** by Cedar (`policies/trustline.cedar`, sche
 `policies/trustline.cedarschema`). Default is deny; `forbid` always beats `permit`. The intended
 permissions are written by hand in `policies/expected-permissions.yaml`; `tools/policy_matrix.py`
 evaluates the policy over every role × purpose × field group × context-flag combination
-(170,368 decisions) and fails if the two disagree.
+(170,368 decisions), plus every operation × capability × principal × purpose × device attestation
+(184,536 decisions in total), and fails if the two disagree.
 
 **Status on 2 Nov 2026:** the policy validates against the schema (`cedar` CLI 4.14) and the
 full matrix matches the intended permissions. A mutation test (adding a criminal-record permit
@@ -46,9 +47,13 @@ A row allows exactly the listed groups when every flag in "Requires" is true. Ev
 | IssueTicket | traffic_officer, patrol_officer, supervisor | Capability `tickets` |
 | ConfirmHit | dispatcher (DSP) | Capability `hits` |
 | DecideLicenceAction | licensing_officer (LIC) | Capability `licence_actions` |
-| RequestDeferral | investigator (INV) | Capability `deferrals` |
-| ApproveDeferral | supervisor (INV); never the requester (database CHECK) | Capability `deferrals` |
-| AcknowledgeDeferral, ReviewAlert | oversight_analyst (AUD) | Capabilities `deferrals`, `alerts` |
+| RequestDeferral (also renewals) | investigator (INV) | Capability `deferrals` |
+| ApproveDeferral (approve or reject) | supervisor (INV); never the requester (database CHECK) | Capability `deferrals` |
+| ReleaseDeferral (early) | investigator or supervisor (INV); oversight_analyst (AUD) | Capability `deferrals` |
+| DesignateProtectedIdentity | supervisor (INV) | Capability `designations` |
+| AcknowledgeDeferral | oversight_analyst (AUD) | Capability `deferrals` |
+| AcknowledgeDesignation | oversight_analyst (AUD) | Capability `designations` |
+| ReviewAlert | oversight_analyst (AUD) | Capability `alerts` |
 | RecordCourtOutcome, RecordPayment | court_system service (CRT) | Capability `court_records` |
 
 ## How the API builds the context

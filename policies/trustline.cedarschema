@@ -41,8 +41,10 @@ namespace Trustline {
     context: FieldContext
   };
 
+  // Deferral actions cover case- and entry-scoped deferrals and renewals (rules/disclosure.yaml).
   action IssueTicket, ConfirmHit, DecideLicenceAction, RequestDeferral, ApproveDeferral,
-         AcknowledgeDeferral, ReviewAlert appliesTo {
+         ReleaseDeferral, AcknowledgeDeferral, DesignateProtectedIdentity, AcknowledgeDesignation,
+         ReviewAlert appliesTo {
     principal: [Officer],
     resource: [Capability],
     context: OpContext

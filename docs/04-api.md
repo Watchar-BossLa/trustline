@@ -1,7 +1,7 @@
 # 04 — API guide
 
 `api/openapi.yaml` (OpenAPI 3.1, validated with openapi-spec-validator on 2 Nov 2026) is the
-contract: 33 operations, 28 ledger-scoped (`x-ledger: true`), 1 per-item (`x-ledger: per_item`,
+contract: 37 operations, 32 ledger-scoped (`x-ledger: true`), 1 per-item (`x-ledger: per_item`,
 offline sync) and 4 without personal data (`x-ledger: false`). This guide explains the
 conventions the server must follow.
 
@@ -17,6 +17,7 @@ conventions the server must follow.
 | Unknown vs stale | A failed source sets the section's `availability` to `unknown` and the source status to `timeout` or `error`. Never serve cached personal data. |
 | Synthetic | Every personal-data response includes `synthetic: true`; responses that apply rules include `legal_rules_verified`. |
 | Rate limits | 429 with `Retry-After`; the denial is a `rate_limited` ledger entry. Limits in docs/02 §11. |
+| Disclosure | Citizen access entries come only from `citizen.visible_access_events`; a withheld entry must be indistinguishable from one that never existed (identical 404s, no counts, full pages). See ADR 0011. |
 | Versioning | Path prefix `/v1`. Breaking changes need a new version and a spec change through Prompt D. |
 | Time | RFC 3339 UTC in the API; the web app shows Saint Lucia time (UTC−04:00). |
 | Money | `*_ecd` fields are Eastern Caribbean dollars, two decimals. Demo penalties are flagged `penalty_is_illustrative`. |
@@ -27,8 +28,8 @@ conventions the server must follow.
 | --- | --- |
 | Officer app (TS, CP) | `POST /v1/roadside/checks`, `POST /v1/tickets`, `GET /v1/tickets/{ticketNo}`, `GET /v1/offline/bundle`, `POST /v1/offline/sync`, `GET /v1/hits/{hitId}/events` |
 | Dispatch (DSP) | `GET /v1/hits`, `POST /v1/hits/{hitId}/decision` |
-| Investigators (INV, WAR, CRASH) | `POST /v1/investigations/queries`, `POST /v1/deferrals` |
-| Supervisors | `POST /v1/deferrals/{deferralId}/approval` (plus roadside endpoints) |
+| Investigators (INV, WAR, CRASH) | `POST /v1/investigations/queries`, `POST /v1/deferrals` (request or renew), `POST /v1/deferrals/{deferralId}/release` |
+| Supervisors | `POST /v1/deferrals/{deferralId}/approval`, `POST /v1/deferrals/{deferralId}/release`, `POST /v1/protected-identities` (plus roadside endpoints) |
 | Licensing Authority (LIC) | `GET /v1/licensing/proposed-actions`, `POST /v1/licensing/proposed-actions/{actionId}/decision`, `POST /v1/licensing/driver-record` |
 | Court system (CRT) | `POST /v1/court/payments`, `POST /v1/court/outcomes`, `POST /v1/court/fines`, `GET /v1/tickets/{ticketNo}` |
 | EMS (EMS) | `POST /v1/ems/emergency-cards` |
